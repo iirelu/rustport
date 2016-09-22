@@ -1,0 +1,10 @@
+[package]
+name = "rustport"
+version = "0.1.0"
+authors = ["iirelu <anna@bawk.space>"]
+
+[lib]
+crate-type = ["dylib"]
+
+[dependencies]
+libc = "0.2"
