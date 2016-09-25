@@ -1,3 +1,5 @@
+use rng_double::{RngDouble, rng_double_next};
+
 fn hsl_value(n1: f32, n2: f32, mut hue: f32) -> f32 {
     if hue > 6.0 {
         hue -= 6.0;
@@ -182,13 +184,6 @@ pub unsafe extern fn rgb_to_hsv_float(
     *r_ = h;
     *g_ = s;
     *b_ = v;
-}
-
-pub struct RngDouble;
-
-#[link(name = "mypaint")]
-extern {
-    fn rng_double_next(self_: *mut RngDouble) -> f64;
 }
 
 #[no_mangle]
