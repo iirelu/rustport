@@ -73,6 +73,7 @@ impl OperationQueue {
             Some(mut op) => op.pop_front(),
             None => None,
         };
+        // TODO check if this is worth it
         if ret.is_none() {
             self.tile_map.remove(&index);
         }
