@@ -1,5 +1,3 @@
-use std::mem;
-
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct ControlPoints {
@@ -9,36 +7,34 @@ pub struct ControlPoints {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct MyPaintMapping {
     base_value: f32,
     inputs: i32,
-    pointsList: *mut ControlPoints,
+    points_list: Vec<ControlPoints>,
     inputs_used: i32,
 }
 
 #[no_mangle]
 pub unsafe extern fn mypaint_mapping_new(inputs_: i32) -> *mut MyPaintMapping {
-    let mut vec = vec![ControlPoints {
+    let vec = vec![ControlPoints {
         xvalues: [0.0; 8],
         yvalues: [0.0; 8],
         n: 0
     }; inputs_ as usize];
-    let ptr = vec.as_mut_ptr();
-    mem::forget(vec);
+
+    println!("{}", inputs_);
 
     Box::into_raw(Box::new(MyPaintMapping {
         base_value: 0.0,
         inputs: inputs_,
-        pointsList: ptr,
+        points_list: vec,
         inputs_used: 0,
     }))
 }
 
 #[no_mangle]
 pub unsafe extern fn mypaint_mapping_free(self_: *mut MyPaintMapping) {
-    let len = (*self_).inputs as usize;
-    Vec::from_raw_parts((*self_).pointsList, len, len);
     Box::from_raw(self_);
 }
 
@@ -69,7 +65,7 @@ pub unsafe extern fn mypaint_mapping_set_n(
     assert!(input >= 0 && input < self_.inputs);
     assert!(n >= 0 && n <= 8);
     assert!(n != 1);
-    let p = &mut *self_.pointsList.offset(input as isize);
+    let p = &mut self_.points_list[input as usize];
 
     if n != 0 && p.n == 0 {
         self_.inputs_used += 1;
@@ -89,7 +85,7 @@ pub unsafe extern fn mypaint_mapping_get_n(
 {
     assert!(!self_.is_null());
     assert!(input >= 0 && input < (*self_).inputs);
-    (*(*self_).pointsList.offset(input as isize)).n
+    (*self_).points_list[input as usize].n
 }
 
 #[no_mangle]
@@ -100,7 +96,7 @@ pub unsafe extern fn mypaint_mapping_set_point(
     let self_ = &mut *self_;
     assert!(input >= 0 && input < self_.inputs);
     assert!(index >= 0 && index < 8);
-    let p = &mut *self_.pointsList.offset(input as isize);
+    let p = &mut self_.points_list[input as usize];
     assert!(index < p.n);
 
     let index = index as usize;
@@ -121,7 +117,7 @@ pub unsafe extern fn mypaint_mapping_get_point(
     let self_ = &mut *self_;
     assert!(input >= 0 && input < self_.inputs);
     assert!(index >= 0 && index < 8);
-    let p = &mut *self_.pointsList.offset(input as isize);
+    let p = &mut self_.points_list[input as usize];
     assert!(index < p.n);
 
     *x = p.xvalues[index as usize];
@@ -161,7 +157,7 @@ pub unsafe extern fn mypaint_mapping_calculate(
     }
 
     for j in 0..self_.inputs {
-        let p = &mut *self_.pointsList.offset(j as isize);
+        let p = &mut self_.points_list[j as usize];
 
         if p.n == 0 {
             continue;
@@ -175,13 +171,13 @@ pub unsafe extern fn mypaint_mapping_calculate(
         let mut y1 = p.yvalues[1];
 
         for i in 2..p.n as usize {
+            if x <= x1 {
+                break;
+            }
             x0 = x1;
             y0 = y1;
             x1 = p.xvalues[i];
             y1 = p.yvalues[i];
-            if x <= x1 {
-                break;
-            }
         }
 
         let y = if x0 == x1 {
