@@ -7,3 +7,5 @@ pub mod helpers;
 pub mod rng_double;
 pub mod operationqueue;
 pub mod mypaint_rectangle;
+pub mod mypaint_surface;
+pub mod mypaint_mapping;
