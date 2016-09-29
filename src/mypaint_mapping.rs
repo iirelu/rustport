@@ -7,7 +7,7 @@ pub struct ControlPoints {
 
 #[repr(C)]
 #[derive(Debug, Clone)]
-pub struct MyPaintMapping {
+pub struct MypaintMapping {
     base_value: f32,
     inputs: i32,
     points_list: Vec<ControlPoints>,
@@ -15,15 +15,13 @@ pub struct MyPaintMapping {
 }
 
 #[no_mangle]
-pub unsafe extern fn mypaint_mapping_new(inputs_: i32) -> *mut MyPaintMapping {
+pub unsafe extern fn mypaint_mapping_new(inputs_: i32) -> *mut MypaintMapping {
     let vec = vec![ControlPoints {
         points: [(0.0, 0.0); 8],
         n: 0
     }; inputs_ as usize];
 
-    println!("{}", inputs_);
-
-    Box::into_raw(Box::new(MyPaintMapping {
+    Box::into_raw(Box::new(MypaintMapping {
         base_value: 0.0,
         inputs: inputs_,
         points_list: vec,
@@ -32,13 +30,13 @@ pub unsafe extern fn mypaint_mapping_new(inputs_: i32) -> *mut MyPaintMapping {
 }
 
 #[no_mangle]
-pub unsafe extern fn mypaint_mapping_free(self_: *mut MyPaintMapping) {
+pub unsafe extern fn mypaint_mapping_free(self_: *mut MypaintMapping) {
     Box::from_raw(self_);
 }
 
 #[no_mangle]
 pub unsafe extern fn mypaint_mapping_get_base_value(
-    self_: *mut MyPaintMapping)
+    self_: *mut MypaintMapping)
     -> f32
 {
     assert!(!self_.is_null());
@@ -47,7 +45,7 @@ pub unsafe extern fn mypaint_mapping_get_base_value(
 
 #[no_mangle]
 pub unsafe extern fn mypaint_mapping_set_base_value(
-    self_: *mut MyPaintMapping, value: f32)
+    self_: *mut MypaintMapping, value: f32)
 {
     assert!(!self_.is_null());
     (*self_).base_value = value;
@@ -55,7 +53,7 @@ pub unsafe extern fn mypaint_mapping_set_base_value(
 
 #[no_mangle]
 pub unsafe extern fn mypaint_mapping_set_n(
-    self_: *mut MyPaintMapping, input: i32, n: i32)
+    self_: *mut MypaintMapping, input: i32, n: i32)
 {
     assert!(!self_.is_null());
     let self_ = &mut *self_;
@@ -78,7 +76,7 @@ pub unsafe extern fn mypaint_mapping_set_n(
 
 #[no_mangle]
 pub unsafe extern fn mypaint_mapping_get_n(
-    self_: *mut MyPaintMapping, input: i32)
+    self_: *mut MypaintMapping, input: i32)
     -> i32
 {
     assert!(!self_.is_null());
@@ -88,7 +86,7 @@ pub unsafe extern fn mypaint_mapping_get_n(
 
 #[no_mangle]
 pub unsafe extern fn mypaint_mapping_set_point(
-    self_: *mut MyPaintMapping, input: i32, index: i32, x: f32, y: f32)
+    self_: *mut MypaintMapping, input: i32, index: i32, x: f32, y: f32)
 {
     assert!(!self_.is_null());
     let self_ = &mut *self_;
@@ -108,7 +106,7 @@ pub unsafe extern fn mypaint_mapping_set_point(
 
 #[no_mangle]
 pub unsafe extern fn mypaint_mapping_get_point(
-    self_: *mut MyPaintMapping, input: i32, index: i32, x: *mut f32, y: *mut f32)
+    self_: *mut MypaintMapping, input: i32, index: i32, x: *mut f32, y: *mut f32)
 {
     assert!(!self_.is_null());
     let self_ = &mut *self_;
@@ -123,7 +121,7 @@ pub unsafe extern fn mypaint_mapping_get_point(
 
 #[no_mangle]
 pub unsafe extern fn mypaint_mapping_is_constant(
-    self_: *mut MyPaintMapping)
+    self_: *mut MypaintMapping)
     -> bool
 {
     assert!(!self_.is_null());
@@ -132,7 +130,7 @@ pub unsafe extern fn mypaint_mapping_is_constant(
 
 #[no_mangle]
 pub unsafe extern fn mypaint_mapping_get_inputs_used_n(
-    self_: *mut MyPaintMapping)
+    self_: *mut MypaintMapping)
     -> i32
 {
     assert!(!self_.is_null());
@@ -141,7 +139,7 @@ pub unsafe extern fn mypaint_mapping_get_inputs_used_n(
 
 #[no_mangle]
 pub unsafe extern fn mypaint_mapping_calculate(
-    self_: *mut MyPaintMapping,
+    self_: *mut MypaintMapping,
     data: *mut f32)
     -> f32
 {
@@ -188,7 +186,7 @@ pub unsafe extern fn mypaint_mapping_calculate(
 
 #[no_mangle]
 pub unsafe extern fn mypaint_mapping_calculate_single_input(
-    self_: *mut MyPaintMapping,
+    self_: *mut MypaintMapping,
     mut input: f32)
     -> f32
 {
