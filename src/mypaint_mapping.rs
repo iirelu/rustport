@@ -1,8 +1,7 @@
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct ControlPoints {
-    xvalues: [f32; 8],
-    yvalues: [f32; 8],
+    points: [(f32, f32); 8],
     n: i32,
 }
 
@@ -18,8 +17,7 @@ pub struct MyPaintMapping {
 #[no_mangle]
 pub unsafe extern fn mypaint_mapping_new(inputs_: i32) -> *mut MyPaintMapping {
     let vec = vec![ControlPoints {
-        xvalues: [0.0; 8],
-        yvalues: [0.0; 8],
+        points: [(0.0, 0.0); 8],
         n: 0
     }; inputs_ as usize];
 
@@ -102,11 +100,10 @@ pub unsafe extern fn mypaint_mapping_set_point(
     let index = index as usize;
 
     if index > 0 {
-        assert!(x >= p.xvalues[index - 1]);
+        assert!(x >= p.points[index - 1].0);
     }
 
-    p.xvalues[index] = x;
-    p.yvalues[index] = y;
+    p.points[index] = (x, y);
 }
 
 #[no_mangle]
@@ -120,8 +117,8 @@ pub unsafe extern fn mypaint_mapping_get_point(
     let p = &mut self_.points_list[input as usize];
     assert!(index < p.n);
 
-    *x = p.xvalues[index as usize];
-    *y = p.yvalues[index as usize];
+    *x = p.points[index as usize].0;
+    *y = p.points[index as usize].1;
 }
 
 #[no_mangle]
@@ -165,10 +162,8 @@ pub unsafe extern fn mypaint_mapping_calculate(
 
         let x = *data.offset(j as isize);
 
-        let mut x0 = p.xvalues[0];
-        let mut y0 = p.yvalues[0];
-        let mut x1 = p.xvalues[1];
-        let mut y1 = p.yvalues[1];
+        let (mut x0, mut y0) = p.points[0];
+        let (mut x1, mut y1) = p.points[1];
 
         for i in 2..p.n as usize {
             if x <= x1 {
@@ -176,8 +171,8 @@ pub unsafe extern fn mypaint_mapping_calculate(
             }
             x0 = x1;
             y0 = y1;
-            x1 = p.xvalues[i];
-            y1 = p.yvalues[i];
+            x1 = p.points[i].0;
+            y1 = p.points[i].1;
         }
 
         let y = if x0 == x1 {
