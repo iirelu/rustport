@@ -209,9 +209,15 @@ mod tests {
     #[test]
     fn test_mypaint_mapping_ffi() {
         unsafe {
-            let mapping = mypaint_mapping_new(100);
-            // i honestly still dont understand what any of this does i just
-            // ported it to rust
+            let mapping = mypaint_mapping_new(9);
+            mypaint_mapping_set_base_value(mapping, 0.35);
+            mypaint_mapping_set_n(mapping, 3, 2);
+            mypaint_mapping_set_n(mapping, 4, 3);
+            mypaint_mapping_set_point(mapping, 3, 1, 0.2, 0.4);
+            assert_eq!(mypaint_mapping_get_base_value(mapping), 0.35);
+            assert_eq!(mypaint_mapping_get_n(mapping, 3), 2);
+            assert_eq!(mypaint_mapping_get_n(mapping, 4), 3);
+            println!("{:?}", *mapping);
         }
     }
 }

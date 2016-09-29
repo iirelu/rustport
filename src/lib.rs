@@ -9,3 +9,8 @@ pub mod operationqueue;
 pub mod mypaint_rectangle;
 pub mod mypaint_surface;
 pub mod mypaint_mapping;
+
+// porting progress:
+// loc  before  after
+// c    3996    2392
+// rust 0       1064
