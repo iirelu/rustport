@@ -844,13 +844,13 @@ pub unsafe extern fn mypaint_brush_stroke_to(
 
     let mut dtime_left = dtime;
 
-    let mut step_ddab = 0.0;
-    let mut step_dx = 0.0;
-    let mut step_dy = 0.0;
-    let mut step_dpressure = 0.0;
-    let mut step_dtime = 0.0;
-    let mut step_declination = 0.0;
-    let mut step_ascension = 0.0;
+    let mut step_ddab;
+    let mut step_dx;
+    let mut step_dy;
+    let mut step_dpressure;
+    let mut step_dtime;
+    let mut step_declination;
+    let mut step_ascension;
     while dabs_moved + dabs_todo >= 1.0 {
         if dabs_moved > 0.0 {
             step_ddab = 1.0 - dabs_moved;
