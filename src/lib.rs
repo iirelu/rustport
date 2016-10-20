@@ -17,3 +17,10 @@ pub mod mypaint_brush;
 // loc  before  after
 // c    3996    2392
 // rust 0       1064
+
+// as of oct 20 2016:
+//
+// porting progress:
+// loc  before  after
+// c    3996    1180
+// rust 0       2220
