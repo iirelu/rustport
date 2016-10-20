@@ -6,6 +6,11 @@ authors = ["iirelu <anna@bawk.space>"]
 [lib]
 crate-type = ["dylib"]
 
+[profile.dev]
+panic = "abort"
+[profile.release]
+panic = "abort"
+
 [dependencies]
 libc = "0.2"
 palette = "0.2.1"

@@ -45,6 +45,27 @@ pub struct MyPaintSurface {
     pub ref_count: i32,
 }
 
+#[link(name = "mypaint")]
+extern {
+    pub fn mypaint_surface_get_color(
+        self_: *mut MyPaintSurface,
+        x: f32, y: f32,
+        radius: f32,
+        color_r: *mut f32, color_g: *mut f32, color_b: *mut f32, color_a: *mut f32);
+
+    pub fn mypaint_surface_draw_dab(
+        self_: *mut MyPaintSurface,
+        x: f32, y: f32,
+        radius: f32,
+        color_r: f32, color_g: f32, color_b: f32,
+        opaque: f32, hardness: f32,
+        alpha_eraser: f32,
+        aspect_ratio: f32,
+        angle: f32,
+        lock_alpha: f32,
+        colorize: f32) -> i32;
+}
+
 // note: all this is dead code until i can figure out why it segfaults
 // it'll probably only return once everything else is rustic
 

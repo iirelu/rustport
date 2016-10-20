@@ -9,6 +9,9 @@ pub mod operationqueue;
 pub mod mypaint_rectangle;
 pub mod mypaint_surface;
 pub mod mypaint_mapping;
+pub mod mypaint_brush_settings;
+pub mod mypaint_brush_settings_gen;
+pub mod mypaint_brush;
 
 // porting progress:
 // loc  before  after
