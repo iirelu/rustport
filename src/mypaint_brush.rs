@@ -370,7 +370,7 @@ pub unsafe extern fn update_states_and_setting_values(
         {
             let dx = self_.states[MYPAINT_BRUSH_STATE_DIRECTION_DX as usize];
             let dy = self_.states[MYPAINT_BRUSH_STATE_DIRECTION_DY as usize];
-            (dx.atan2(dy) / 6.283185 * 360.0 + 180.0) % 180.0
+            (dx.atan2(dy) / TAU * 360.0 + 180.0) % 180.0
         },
         self_.states[MYPAINT_BRUSH_STATE_DECLINATION as usize],
         ((self_.states[MYPAINT_BRUSH_STATE_ASCENSION as usize] + 180.0) % 360.0) - 180.0,
