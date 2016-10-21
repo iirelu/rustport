@@ -98,3 +98,34 @@ pub enum MyPaintBrushState {
     MYPAINT_BRUSH_STATE_ASCENSION,
     // MYPAINT_BRUSH_STATES_COUNT
 }
+
+pub struct MyPaintBrushState {
+    x: f32,
+    y: f32,
+    pressure: f32,
+    partial_dabs: f32,
+    actual_radius: f32,
+    smudge_ra: f32,
+    smudge_ga: f32,
+    smudge_ba: f32,
+    smudge_a: f32,
+    last_getcolor_r: f32,
+    last_getcolor_g: f32,
+    last_getcolor_b: f32,
+    last_getcolor_a: f32,
+    last_getcolor_recentness: f32,
+    actual_x: f32,
+    actual_y: f32,
+    norm_dx_slow: f32,
+    norm_dy_slow: f32,
+    stroke: f32,
+    stroke_started: f32,
+    custom_input: f32,
+    rng_seed: f32,
+    actual_elliptical_dab_ratio: f32,
+    actual_elliptical_dab_angle: f32,
+    direction_dx: f32,
+    direction_dy: f32,
+    declination: f32,
+    ascension: f32
+}
