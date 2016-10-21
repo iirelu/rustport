@@ -21,7 +21,6 @@ const ACTUAL_RADIUS_MAX: f32 = 1000.0;
 
 const TAU: f32 = 6.2831853071;
 
-#[repr(C)]
 pub struct MyPaintBrush {
     print_inputs: bool,
     stroke_total_painting_time: f64,
@@ -31,9 +30,9 @@ pub struct MyPaintBrush {
     settings: [*mut MypaintMapping; MYPAINT_BRUSH_SETTINGS_COUNT],
     settings_value: [f32; MYPAINT_BRUSH_SETTINGS_COUNT],
 
-    speed_mapping_gamma: [f32; 2],
-    speed_mapping_m: [f32; 2],
-    speed_mapping_q: [f32; 2],
+    speed_mapping_gamma: (f32, f32),
+    speed_mapping_m: (f32, f32),
+    speed_mapping_q: (f32, f32),
 
     reset_requested: bool,
     refcount: i32,
@@ -56,9 +55,9 @@ pub unsafe extern fn mypaint_brush_new() -> *mut MyPaintBrush {
         rng: rng_double_new(1000),
         settings: settings,
         settings_value: [0.0; MYPAINT_BRUSH_SETTINGS_COUNT],
-        speed_mapping_gamma: [0.0; 2],
-        speed_mapping_m: [0.0; 2],
-        speed_mapping_q: [0.0; 2],
+        speed_mapping_gamma: (0.0, 0.0),
+        speed_mapping_m: (0.0, 0.0),
+        speed_mapping_q: (0.0, 0.0),
         reset_requested: true,
         refcount: 1,
     }));
@@ -280,31 +279,27 @@ fn exp_decay(T_const: f32, t: f32) -> f32 {
 pub unsafe extern fn settings_base_values_have_changed(
     self_: *mut MyPaintBrush)
 {
+    // horrible, but better than the loop that used to be here
+    fn precalc_with_gamma(gamma: f32) -> (f32, f32, f32) {
+        let c1 = (45.0 + gamma).ln();
+        let m = 0.015 * (45.0 + gamma);
+        let q = 0.5 - m * c1;
+        (gamma, m, q)
+    }
     assert!(!self_.is_null());
     let self_ = &mut *self_;
-    for i in 0..2 {
-        let gamma = {
-            let index = if i == 0 {
-                MYPAINT_BRUSH_SETTING_SPEED1_GAMMA as usize
-            } else {
-                MYPAINT_BRUSH_SETTING_SPEED2_GAMMA as usize
-            };
-            mypaint_mapping_get_base_value(self_.settings[index])
-        };
 
-        let fix1_x = 45.0;
-        let fix1_y = 0.5;
-        let fix2_x = 45.0;
-        let fix2_dy = 0.015;
+    let (gamma0, m0, q0) = precalc_with_gamma(
+        mypaint_mapping_get_base_value(
+            self_.settings[MYPAINT_BRUSH_SETTING_SPEED1_GAMMA as usize]));
 
-        let c1 = (fix1_x+gamma).ln();
-        let m = fix2_dy * (fix2_x + gamma);
-        let q = fix1_y - m*c1;
+    let (gamma1, m1, q1) = precalc_with_gamma(
+        mypaint_mapping_get_base_value(
+            self_.settings[MYPAINT_BRUSH_SETTING_SPEED2_GAMMA as usize]));
 
-        self_.speed_mapping_gamma[i] = gamma;
-        self_.speed_mapping_m[i] = m;
-        self_.speed_mapping_q[i] = q;
-    }
+    self_.speed_mapping_gamma = (gamma0, gamma1);
+    self_.speed_mapping_m = (m0, m1);
+    self_.speed_mapping_q = (q0, q1);
 }
 
 #[no_mangle]
@@ -366,10 +361,10 @@ pub unsafe extern fn update_states_and_setting_values(
 
     let mut inputs = [
         pressure * mypaint_mapping_get_base_value(self_.settings[MYPAINT_BRUSH_SETTING_PRESSURE_GAIN_LOG as usize]).exp(),
-        (self_.speed_mapping_gamma[0] + self_.states[MYPAINT_BRUSH_STATE_NORM_SPEED1_SLOW as usize]).ln()
-            * self_.speed_mapping_m[0] + self_.speed_mapping_q[0],
-        (self_.speed_mapping_gamma[1] + self_.states[MYPAINT_BRUSH_STATE_NORM_SPEED2_SLOW as usize]).ln()
-            * self_.speed_mapping_m[1] + self_.speed_mapping_q[1],
+        (self_.speed_mapping_gamma.0 + self_.states[MYPAINT_BRUSH_STATE_NORM_SPEED1_SLOW as usize]).ln()
+            * self_.speed_mapping_m.0 + self_.speed_mapping_q.1,
+        (self_.speed_mapping_gamma.1 + self_.states[MYPAINT_BRUSH_STATE_NORM_SPEED2_SLOW as usize]).ln()
+            * self_.speed_mapping_m.1 + self_.speed_mapping_q.1,
         rng_double_next(self_.rng) as f32,
         self_.states[MYPAINT_BRUSH_STATE_STROKE as usize].min(1.0),
         {
