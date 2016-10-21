@@ -2,7 +2,7 @@
 #![allow(unused_variables)]
 
 use mypaint_brush_settings_gen::MyPaintBrushSetting::*;
-use mypaint_brush_settings_gen::MyPaintBrushState::*;
+use mypaint_brush_settings_gen::MyPaintBrushState;
 use mypaint_brush_settings_gen::MyPaintBrushInput::*;
 use mypaint_brush_settings::MyPaintBrushSettingInfo;
 use mypaint_mapping::*;
@@ -25,7 +25,7 @@ pub struct MyPaintBrush {
     print_inputs: bool,
     stroke_total_painting_time: f64,
     stroke_current_idling_time: f64,
-    states: [f32; MYPAINT_BRUSH_STATES_COUNT],
+    state: MyPaintBrushState,
     rng: *mut RngDouble,
     settings: [*mut MypaintMapping; MYPAINT_BRUSH_SETTINGS_COUNT],
     settings_value: [f32; MYPAINT_BRUSH_SETTINGS_COUNT],
@@ -51,7 +51,7 @@ pub unsafe extern fn mypaint_brush_new() -> *mut MyPaintBrush {
         print_inputs: false,
         stroke_total_painting_time: 0.0,
         stroke_current_idling_time: 0.0,
-        states: [0.0; MYPAINT_BRUSH_STATES_COUNT],
+        state: MyPaintBrushState::default(),
         rng: rng_double_new(1000),
         settings: settings,
         settings_value: [0.0; MYPAINT_BRUSH_SETTINGS_COUNT],
@@ -238,7 +238,7 @@ pub unsafe extern fn mypaint_brush_get_state(
 {
     assert!(!self_.is_null());
     assert!(i < MYPAINT_BRUSH_STATES_COUNT as u32);
-    (*self_).states[i as usize]
+    *(*self_).state.int_to_state(i as usize)
 }
 
 #[no_mangle]
@@ -249,7 +249,7 @@ pub unsafe extern fn mypaint_brush_set_state(
 {
     assert!(!self_.is_null());
     assert!(i < MYPAINT_BRUSH_STATES_COUNT as u32);
-    (*self_).states[i as usize] = value;
+    *(*self_).state.int_to_state(i as usize) = value;
 }
 
 fn smallest_angular_difference(a: f32, b: f32) -> f32 {
@@ -322,34 +322,34 @@ pub unsafe extern fn update_states_and_setting_values(
         step_dtime = 0.001;
     }
 
-    self_.states[MYPAINT_BRUSH_STATE_X as usize] += step_dx;
-    self_.states[MYPAINT_BRUSH_STATE_Y as usize] += step_dy;
-    self_.states[MYPAINT_BRUSH_STATE_PRESSURE as usize] += step_dpressure;
+    self_.state.x += step_dx;
+    self_.state.y += step_dy;
+    self_.state.pressure += step_dpressure;
 
-    self_.states[MYPAINT_BRUSH_STATE_DECLINATION as usize] += step_declination;
-    self_.states[MYPAINT_BRUSH_STATE_ASCENSION as usize] += step_ascension;
+    self_.state.declination += step_declination;
+    self_.state.ascension += step_ascension;
 
     let base_radius = mypaint_mapping_get_base_value(
         self_.settings[MYPAINT_BRUSH_SETTING_RADIUS_LOGARITHMIC as usize])
         .exp();
 
-    if self_.states[MYPAINT_BRUSH_STATE_PRESSURE as usize] <= 0.0 {
-        self_.states[MYPAINT_BRUSH_STATE_PRESSURE as usize] = 0.0;
+    if self_.state.pressure <= 0.0 {
+        self_.state.pressure = 0.0;
     }
-    let pressure = self_.states[MYPAINT_BRUSH_STATE_PRESSURE as usize];
+    let pressure = self_.state.pressure;
 
     {
         let base_threshold = mypaint_mapping_get_base_value(
             self_.settings[MYPAINT_BRUSH_SETTING_STROKE_THRESHOLD as usize]);
 
-        if self_.states[MYPAINT_BRUSH_STATE_STROKE_STARTED as usize] == 0.0 {
+        if self_.state.stroke_started == 0.0 {
             if pressure > base_threshold + 0.0001 {
-                self_.states[MYPAINT_BRUSH_STATE_STROKE_STARTED as usize] = 1.0;
-                self_.states[MYPAINT_BRUSH_STATE_STROKE as usize] = 0.0;
+                self_.state.stroke_started = 1.0;
+                self_.state.stroke = 0.0;
             }
         } else {
             if pressure <= base_threshold * 0.9 + 0.0001 {
-                self_.states[MYPAINT_BRUSH_STATE_STROKE_STARTED as usize] = 0.0;
+                self_.state.stroke_started = 0.0;
             }
         }
     }
@@ -361,20 +361,20 @@ pub unsafe extern fn update_states_and_setting_values(
 
     let mut inputs = [
         pressure * mypaint_mapping_get_base_value(self_.settings[MYPAINT_BRUSH_SETTING_PRESSURE_GAIN_LOG as usize]).exp(),
-        (self_.speed_mapping_gamma.0 + self_.states[MYPAINT_BRUSH_STATE_NORM_SPEED1_SLOW as usize]).ln()
+        (self_.speed_mapping_gamma.0 + self_.state.norm_speed1_slow).ln()
             * self_.speed_mapping_m.0 + self_.speed_mapping_q.1,
-        (self_.speed_mapping_gamma.1 + self_.states[MYPAINT_BRUSH_STATE_NORM_SPEED2_SLOW as usize]).ln()
+        (self_.speed_mapping_gamma.1 + self_.state.norm_speed2_slow).ln()
             * self_.speed_mapping_m.1 + self_.speed_mapping_q.1,
         rng_double_next(self_.rng) as f32,
-        self_.states[MYPAINT_BRUSH_STATE_STROKE as usize].min(1.0),
+        self_.state.stroke.min(1.0),
         {
-            let dx = self_.states[MYPAINT_BRUSH_STATE_DIRECTION_DX as usize];
-            let dy = self_.states[MYPAINT_BRUSH_STATE_DIRECTION_DY as usize];
+            let dx = self_.state.direction_dx;
+            let dy = self_.state.direction_dy;
             (dx.atan2(dy) / TAU * 360.0 + 180.0) % 180.0
         },
-        self_.states[MYPAINT_BRUSH_STATE_DECLINATION as usize],
-        ((self_.states[MYPAINT_BRUSH_STATE_ASCENSION as usize] + 180.0) % 360.0) - 180.0,
-        self_.states[MYPAINT_BRUSH_STATE_CUSTOM_INPUT as usize]
+        self_.state.declination,
+        ((self_.state.ascension + 180.0) % 360.0) - 180.0,
+        self_.state.custom_input
     ];
 
     for i in 0..MYPAINT_BRUSH_SETTINGS_COUNT {
@@ -383,21 +383,17 @@ pub unsafe extern fn update_states_and_setting_values(
 
     {
         let fac = 1.0 - exp_decay(self_.settings_value[MYPAINT_BRUSH_SETTING_SLOW_TRACKING_PER_DAB as usize], step_ddab);
-        self_.states[MYPAINT_BRUSH_STATE_ACTUAL_X as usize] +=
-            (self_.states[MYPAINT_BRUSH_STATE_X as usize] - self_.states[MYPAINT_BRUSH_STATE_ACTUAL_X as usize])
-            * fac;
-        self_.states[MYPAINT_BRUSH_STATE_ACTUAL_Y as usize] +=
-            (self_.states[MYPAINT_BRUSH_STATE_Y as usize] - self_.states[MYPAINT_BRUSH_STATE_ACTUAL_Y as usize])
-            * fac;
+        self_.state.actual_x += (self_.state.x - self_.state.actual_x) * fac;
+        self_.state.actual_y += (self_.state.y - self_.state.actual_y) * fac;
     }
 
     {
         let fac = 1.0 - exp_decay(self_.settings_value[MYPAINT_BRUSH_SETTING_SPEED1_SLOWNESS as usize], step_dtime);
-        self_.states[MYPAINT_BRUSH_STATE_NORM_SPEED1_SLOW as usize] +=
-            (norm_speed - self_.states[MYPAINT_BRUSH_STATE_NORM_SPEED1_SLOW as usize]) * fac;
+        self_.state.norm_speed1_slow +=
+            (norm_speed - self_.state.norm_speed1_slow) * fac;
         let fac = 1.0 - exp_decay(self_.settings_value[MYPAINT_BRUSH_SETTING_SPEED2_SLOWNESS as usize], step_dtime);
-        self_.states[MYPAINT_BRUSH_STATE_NORM_SPEED2_SLOW as usize] +=
-            (norm_speed - self_.states[MYPAINT_BRUSH_STATE_NORM_SPEED2_SLOW as usize]) * fac;
+        self_.state.norm_speed2_slow +=
+            (norm_speed - self_.state.norm_speed2_slow) * fac;
     }
 
     {
@@ -406,10 +402,10 @@ pub unsafe extern fn update_states_and_setting_values(
             .exp() - 1.0;
         time_constant = time_constant.max(0.002);
         let fac = 1.0 - exp_decay(time_constant, step_dtime);
-        self_.states[MYPAINT_BRUSH_STATE_NORM_DX_SLOW as usize] +=
-            (norm_dx - self_.states[MYPAINT_BRUSH_STATE_NORM_DX_SLOW as usize]) * fac;
-        self_.states[MYPAINT_BRUSH_STATE_NORM_DY_SLOW as usize] +=
-            (norm_dy - self_.states[MYPAINT_BRUSH_STATE_NORM_DY_SLOW as usize]) * fac;
+        self_.state.norm_dx_slow +=
+            (norm_dx - self_.state.norm_dx_slow) * fac;
+        self_.state.norm_dy_slow +=
+            (norm_dy - self_.state.norm_dy_slow) * fac;
     }
 
     {
@@ -420,50 +416,48 @@ pub unsafe extern fn update_states_and_setting_values(
             (self_.settings_value[MYPAINT_BRUSH_SETTING_DIRECTION_FILTER as usize]*0.5).exp() - 1.0,
             step_in_dabtime);
 
-        let dx_old = self_.states[MYPAINT_BRUSH_STATE_DIRECTION_DX as usize];
-        let dy_old = self_.states[MYPAINT_BRUSH_STATE_DIRECTION_DY as usize];
+        let dx_old = self_.state.direction_dx;
+        let dy_old = self_.state.direction_dy;
         if sq(dx_old-dx) + sq(dy_old-dy) > sq(dx_old+dx) + sq(dy_old+dy) {
             dx = -dx;
             dy = -dy;
         }
-        self_.states[MYPAINT_BRUSH_STATE_DIRECTION_DX as usize] +=
-            (dx - self_.states[MYPAINT_BRUSH_STATE_DIRECTION_DX as usize]) * fac;
-        self_.states[MYPAINT_BRUSH_STATE_DIRECTION_DY as usize] +=
-            (dy - self_.states[MYPAINT_BRUSH_STATE_DIRECTION_DY as usize]) * fac;
+        self_.state.direction_dx += (dx - self_.state.direction_dx) * fac;
+        self_.state.direction_dy += (dy - self_.state.direction_dy) * fac;
     }
 
     {
         let fac = 1.0 - exp_decay(self_.settings_value[MYPAINT_BRUSH_SETTING_CUSTOM_INPUT_SLOWNESS as usize], 0.1);
-        self_.states[MYPAINT_BRUSH_STATE_CUSTOM_INPUT as usize] +=
+        self_.state.custom_input +=
             (self_.settings_value[MYPAINT_BRUSH_SETTING_CUSTOM_INPUT as usize]
-             - self_.states[MYPAINT_BRUSH_STATE_CUSTOM_INPUT as usize])
+             - self_.state.custom_input)
             * fac;
     }
 
     {
         let frequency = (-self_.settings_value[MYPAINT_BRUSH_SETTING_STROKE_DURATION_LOGARITHMIC as usize]).exp();
-        self_.states[MYPAINT_BRUSH_STATE_STROKE as usize] +=
+        self_.state.stroke +=
             norm_dist * frequency;
-        self_.states[MYPAINT_BRUSH_STATE_STROKE as usize] =
-            self_.states[MYPAINT_BRUSH_STATE_STROKE as usize].max(0.0);
+        self_.state.stroke =
+            self_.state.stroke.max(0.0);
         let wrap = 1.0 + self_.settings_value[MYPAINT_BRUSH_SETTING_STROKE_HOLDTIME as usize];
 
-        if self_.states[MYPAINT_BRUSH_STATE_STROKE as usize] > wrap {
-            self_.states[MYPAINT_BRUSH_STATE_STROKE as usize] = if wrap > 10.9 {
+        if self_.state.stroke > wrap {
+            self_.state.stroke = if wrap > 10.9 {
                 1.0
             } else {
-                (self_.states[MYPAINT_BRUSH_STATE_STROKE as usize] % wrap).max(0.0)
+                (self_.state.stroke % wrap).max(0.0)
             }
         }
     }
 
     let radius_log = self_.settings_value[MYPAINT_BRUSH_SETTING_RADIUS_LOGARITHMIC as usize];
-    self_.states[MYPAINT_BRUSH_STATE_ACTUAL_RADIUS as usize] =
+    self_.state.actual_radius =
         radius_log.exp().min(ACTUAL_RADIUS_MAX).max(ACTUAL_RADIUS_MIN);
 
-    self_.states[MYPAINT_BRUSH_STATE_ACTUAL_ELLIPTICAL_DAB_RATIO as usize] =
+    self_.state.actual_elliptical_dab_ratio =
         self_.settings_value[MYPAINT_BRUSH_SETTING_ELLIPTICAL_DAB_RATIO as usize];
-    self_.states[MYPAINT_BRUSH_STATE_ACTUAL_ELLIPTICAL_DAB_ANGLE as usize] =
+    self_.state.actual_elliptical_dab_angle =
         self_.settings_value[MYPAINT_BRUSH_SETTING_ELLIPTICAL_DAB_ANGLE as usize];
 }
 
@@ -503,16 +497,16 @@ pub unsafe extern fn prepare_and_draw_dab(
         let alpha_dab = 1.0 - beta_dab;
         opaque = alpha_dab;
     }
-    let mut x = self_.states[MYPAINT_BRUSH_STATE_ACTUAL_X as usize];
-    let mut y = self_.states[MYPAINT_BRUSH_STATE_ACTUAL_Y as usize];
+    let mut x = self_.state.actual_x;
+    let mut y = self_.state.actual_y;
 
     let base_radius = mypaint_mapping_get_base_value(
         self_.settings[MYPAINT_BRUSH_SETTING_RADIUS_LOGARITHMIC as usize]).exp();
 
     if self_.settings_value[MYPAINT_BRUSH_SETTING_OFFSET_BY_SPEED as usize] != 0.0 {
         let mult = self_.settings_value[MYPAINT_BRUSH_SETTING_OFFSET_BY_SPEED as usize] * 0.1 * base_radius;
-        x += self_.states[MYPAINT_BRUSH_STATE_NORM_DX_SLOW as usize] * mult;
-        y += self_.states[MYPAINT_BRUSH_STATE_NORM_DY_SLOW as usize] * mult;
+        x += self_.state.norm_dx_slow * mult;
+        y += self_.state.norm_dy_slow * mult;
     }
 
     {
@@ -524,7 +518,7 @@ pub unsafe extern fn prepare_and_draw_dab(
         }
     }
 
-    let mut radius = self_.states[MYPAINT_BRUSH_STATE_ACTUAL_RADIUS as usize];
+    let mut radius = self_.state.actual_radius;
 
     if self_.settings_value[MYPAINT_BRUSH_SETTING_RADIUS_BY_RANDOM as usize] != 0.0 {
         let mut radius_log = self_.settings_value[MYPAINT_BRUSH_SETTING_RADIUS_LOGARITHMIC as usize];
@@ -533,7 +527,7 @@ pub unsafe extern fn prepare_and_draw_dab(
 
         radius = radius_log.exp().min(ACTUAL_RADIUS_MAX).max(ACTUAL_RADIUS_MIN);
 
-        let alpha_correction = sq(self_.states[MYPAINT_BRUSH_STATE_ACTUAL_RADIUS as usize] / radius);
+        let alpha_correction = sq(self_.state.actual_radius / radius);
         if alpha_correction <= 1.0 {
             opaque *= alpha_correction;
         }
@@ -553,12 +547,12 @@ pub unsafe extern fn prepare_and_draw_dab(
         let mut b = 0.0;
         let mut a = 0.0;
 
-        self_.states[MYPAINT_BRUSH_STATE_LAST_GETCOLOR_RECENTNESS as usize] *= fac;
-        if self_.states[MYPAINT_BRUSH_STATE_LAST_GETCOLOR_RECENTNESS as usize] < 0.5*fac {
-            if self_.states[MYPAINT_BRUSH_STATE_LAST_GETCOLOR_RECENTNESS as usize] == 0.0 {
+        self_.state.last_getcolor_recentness *= fac;
+        if self_.state.last_getcolor_recentness < 0.5*fac {
+            if self_.state.last_getcolor_recentness == 0.0 {
                 fac = 0.0;
             }
-            self_.states[MYPAINT_BRUSH_STATE_LAST_GETCOLOR_RECENTNESS as usize] = 1.0;
+            self_.state.last_getcolor_recentness = 1.0;
 
             let mut smudge_radius =
                 radius * self_.settings_value[MYPAINT_BRUSH_SETTING_SMUDGE_RADIUS_LOG as usize].exp();
@@ -568,26 +562,26 @@ pub unsafe extern fn prepare_and_draw_dab(
                 &mut g as *mut _,
                 &mut b as *mut _,
                 &mut a as *mut _);
-            self_.states[MYPAINT_BRUSH_STATE_LAST_GETCOLOR_R as usize] = r;
-            self_.states[MYPAINT_BRUSH_STATE_LAST_GETCOLOR_G as usize] = g;
-            self_.states[MYPAINT_BRUSH_STATE_LAST_GETCOLOR_B as usize] = b;
-            self_.states[MYPAINT_BRUSH_STATE_LAST_GETCOLOR_A as usize] = a;
+            self_.state.last_getcolor_r = r;
+            self_.state.last_getcolor_g = g;
+            self_.state.last_getcolor_b = b;
+            self_.state.last_getcolor_a = a;
         } else {
-            r = self_.states[MYPAINT_BRUSH_STATE_LAST_GETCOLOR_R as usize];
-            g = self_.states[MYPAINT_BRUSH_STATE_LAST_GETCOLOR_G as usize];
-            b = self_.states[MYPAINT_BRUSH_STATE_LAST_GETCOLOR_B as usize];
-            a = self_.states[MYPAINT_BRUSH_STATE_LAST_GETCOLOR_A as usize];
+            r = self_.state.last_getcolor_r;
+            g = self_.state.last_getcolor_g;
+            b = self_.state.last_getcolor_b;
+            a = self_.state.last_getcolor_a;
         }
 
-        self_.states[MYPAINT_BRUSH_STATE_SMUDGE_A as usize] =
-            (fac*self_.states[MYPAINT_BRUSH_STATE_SMUDGE_A as usize] + (1.0-fac)*a)
+        self_.state.smudge_a =
+            (fac*self_.state.smudge_a + (1.0-fac)*a)
             .min(1.0).max(0.0);
-        self_.states[MYPAINT_BRUSH_STATE_SMUDGE_RA as usize] =
-            fac*self_.states[MYPAINT_BRUSH_STATE_SMUDGE_RA as usize] + (1.0-fac)*r*a;
-        self_.states[MYPAINT_BRUSH_STATE_SMUDGE_GA as usize] =
-            fac*self_.states[MYPAINT_BRUSH_STATE_SMUDGE_GA as usize] + (1.0-fac)*g*a;
-        self_.states[MYPAINT_BRUSH_STATE_SMUDGE_BA as usize] =
-            fac*self_.states[MYPAINT_BRUSH_STATE_SMUDGE_BA as usize] + (1.0-fac)*b*a;
+        self_.state.smudge_ra =
+            fac*self_.state.smudge_ra + (1.0-fac)*r*a;
+        self_.state.smudge_ga =
+            fac*self_.state.smudge_ga + (1.0-fac)*g*a;
+        self_.state.smudge_ba =
+            fac*self_.state.smudge_ba + (1.0-fac)*b*a;
     }
 
     let mut color_h = mypaint_mapping_get_base_value(
@@ -605,12 +599,12 @@ pub unsafe extern fn prepare_and_draw_dab(
             &mut color_v as *mut _);
         let fac = self_.settings_value[MYPAINT_BRUSH_SETTING_SMUDGE as usize]
             .min(1.0);
-        eraser_target_alpha = ((1.0-fac) + fac*self_.states[MYPAINT_BRUSH_STATE_SMUDGE_A as usize])
+        eraser_target_alpha = ((1.0-fac) + fac*self_.state.smudge_a)
             .min(1.0).max(0.0);
         if eraser_target_alpha > 0.0 {
-            color_h = (fac*self_.states[MYPAINT_BRUSH_STATE_SMUDGE_RA as usize] + (1.0-fac)*color_h) / eraser_target_alpha;
-            color_s = (fac*self_.states[MYPAINT_BRUSH_STATE_SMUDGE_GA as usize] + (1.0-fac)*color_s) / eraser_target_alpha;
-            color_v = (fac*self_.states[MYPAINT_BRUSH_STATE_SMUDGE_BA as usize] + (1.0-fac)*color_v) / eraser_target_alpha;
+            color_h = (fac*self_.state.smudge_ra + (1.0-fac)*color_h) / eraser_target_alpha;
+            color_s = (fac*self_.state.smudge_ga + (1.0-fac)*color_s) / eraser_target_alpha;
+            color_v = (fac*self_.state.smudge_ba + (1.0-fac)*color_v) / eraser_target_alpha;
         } else {
             color_h = 1.0;
             color_s = 0.0;
@@ -691,8 +685,8 @@ pub unsafe extern fn prepare_and_draw_dab(
         color_h, color_s, color_v,
         opaque, hardness,
         eraser_target_alpha,
-        self_.states[MYPAINT_BRUSH_STATE_ACTUAL_ELLIPTICAL_DAB_RATIO as usize],
-        self_.states[MYPAINT_BRUSH_STATE_ACTUAL_ELLIPTICAL_DAB_ANGLE as usize],
+        self_.state.actual_elliptical_dab_ratio,
+        self_.state.actual_elliptical_dab_angle,
         self_.settings_value[MYPAINT_BRUSH_SETTING_LOCK_ALPHA as usize],
         self_.settings_value[MYPAINT_BRUSH_SETTING_COLORIZE as usize]) != 0
 }
@@ -710,7 +704,7 @@ pub unsafe extern fn count_dabs_to(
 
     {
         // just holding a ref to it cause we use it so much here
-        let rad = &mut self_.states[MYPAINT_BRUSH_STATE_ACTUAL_RADIUS as usize];
+        let rad = &mut self_.state.actual_radius;
         if *rad == 0.0 {
             *rad = mypaint_mapping_get_base_value(self_.settings[MYPAINT_BRUSH_SETTING_RADIUS_LOGARITHMIC as usize]).exp();
         }
@@ -720,11 +714,11 @@ pub unsafe extern fn count_dabs_to(
     let base_radius = mypaint_mapping_get_base_value(self_.settings[MYPAINT_BRUSH_SETTING_RADIUS_LOGARITHMIC as usize])
         .exp().max(ACTUAL_RADIUS_MIN).min(ACTUAL_RADIUS_MAX);
 
-    let xx = x - self_.states[MYPAINT_BRUSH_STATE_X as usize];
-    let yy = y - self_.states[MYPAINT_BRUSH_STATE_Y as usize];
+    let xx = x - self_.state.x;
+    let yy = y - self_.state.y;
 
     let dist = {
-        let dab_ratio = &mut self_.states[MYPAINT_BRUSH_STATE_ACTUAL_ELLIPTICAL_DAB_RATIO as usize];
+        let dab_ratio = &mut self_.state.actual_elliptical_dab_ratio;
         if *dab_ratio > 1.0 {
             let angle_rad = *dab_ratio / 360.0 * TAU;
             let (sn, cs) = angle_rad.sin_cos();
@@ -734,7 +728,7 @@ pub unsafe extern fn count_dabs_to(
         }
     };
 
-    let res1 = dist / self_.states[MYPAINT_BRUSH_STATE_ACTUAL_RADIUS as usize] *
+    let res1 = dist / self_.state.actual_radius *
         mypaint_mapping_get_base_value(self_.settings[MYPAINT_BRUSH_SETTING_DABS_PER_ACTUAL_RADIUS as usize]);
     let res2 = dist / base_radius *
         mypaint_mapping_get_base_value(self_.settings[MYPAINT_BRUSH_SETTING_DABS_PER_BASIC_RADIUS as usize]);
@@ -787,7 +781,7 @@ pub unsafe extern fn mypaint_brush_stroke_to(
         dtime = 0.0001;
     }
 
-    if dtime > 0.1 && pressure != 0.0 && self_.states[MYPAINT_BRUSH_STATE_PRESSURE as usize] == 0.0 {
+    if dtime > 0.1 && pressure != 0.0 && self_.state.pressure == 0.0 {
         // workaround for tablets that don't report motion without pressure
         mypaint_brush_stroke_to(self_ as *mut _, surface, x, y, 0.0, 9.0, 0.0, dtime - 0.0001);
         dtime = 0.0001;
@@ -804,29 +798,27 @@ pub unsafe extern fn mypaint_brush_stroke_to(
         let fac = 1.0 - exp_decay(
             mypaint_mapping_get_base_value(self_.settings[MYPAINT_BRUSH_SETTING_SLOW_TRACKING as usize]),
             100.0 * dtime as f32);
-        let sx = self_.states[MYPAINT_BRUSH_STATE_X as usize];
-        let sy = self_.states[MYPAINT_BRUSH_STATE_Y as usize];
+        let sx = self_.state.x;
+        let sy = self_.state.y;
         x = sx + (x - sx)*fac;
         y = sy + (y - sy)*fac;
     }
 
-    let mut dabs_moved = self_.states[MYPAINT_BRUSH_STATE_PARTIAL_DABS as usize];
+    let mut dabs_moved = self_.state.partial_dabs;
     let mut dabs_todo = count_dabs_to(self_ as *mut _, x, y, pressure, dtime as f32);
 
     if dtime > 5.0 || self_.reset_requested {
         self_.reset_requested = false;
 
-        for i in 0..MYPAINT_BRUSH_STATES_COUNT {
-            self_.states[i] = 0.0;
-        }
+        self_.state = MyPaintBrushState::default();
 
-        self_.states[MYPAINT_BRUSH_STATE_X as usize] = x;
-        self_.states[MYPAINT_BRUSH_STATE_Y as usize] = y;
-        self_.states[MYPAINT_BRUSH_STATE_PRESSURE as usize] = pressure;
+        self_.state.x = x;
+        self_.state.y = y;
+        self_.state.pressure = pressure;
 
-        self_.states[MYPAINT_BRUSH_STATE_ACTUAL_X as usize] = x;
-        self_.states[MYPAINT_BRUSH_STATE_ACTUAL_Y as usize] = y;
-        self_.states[MYPAINT_BRUSH_STATE_STROKE as usize] = 1.0;
+        self_.state.actual_x = x;
+        self_.state.actual_y = y;
+        self_.state.stroke = 1.0;
 
         return 1;
     }
@@ -854,13 +846,13 @@ pub unsafe extern fn mypaint_brush_stroke_to(
             step_ddab = 1.0;
         }
         let frac = step_ddab / dabs_todo;
-        step_dx = frac * (x - self_.states[MYPAINT_BRUSH_STATE_X as usize]);
-        step_dy = frac * (y - self_.states[MYPAINT_BRUSH_STATE_Y as usize]);
-        step_dpressure = frac * (pressure - self_.states[MYPAINT_BRUSH_STATE_PRESSURE as usize]);
+        step_dx = frac * (x - self_.state.x);
+        step_dy = frac * (y - self_.state.y);
+        step_dpressure = frac * (pressure - self_.state.pressure);
         step_dtime = frac as f64 * dtime_left;
 
-        step_declination = frac * (tilt_declination - self_.states[MYPAINT_BRUSH_STATE_DECLINATION as usize]);
-        step_ascension = frac * smallest_angular_difference(self_.states[MYPAINT_BRUSH_STATE_ASCENSION as usize], tilt_ascension);
+        step_declination = frac * (tilt_declination - self_.state.declination);
+        step_ascension = frac * smallest_angular_difference(self_.state.ascension, tilt_ascension);
 
         update_states_and_setting_values(self_ as *mut _,
             step_ddab, step_dx, step_dy, step_dpressure,
@@ -877,18 +869,18 @@ pub unsafe extern fn mypaint_brush_stroke_to(
     }
 
     step_ddab = dabs_todo;
-    step_dx = x - self_.states[MYPAINT_BRUSH_STATE_X as usize];
-    step_dy = y - self_.states[MYPAINT_BRUSH_STATE_Y as usize];
-    step_dpressure = pressure - self_.states[MYPAINT_BRUSH_STATE_PRESSURE as usize];
-    step_declination = tilt_declination - self_.states[MYPAINT_BRUSH_STATE_DECLINATION as usize];
-    step_ascension = smallest_angular_difference(self_.states[MYPAINT_BRUSH_STATE_ASCENSION as usize], tilt_ascension);
+    step_dx = x - self_.state.x;
+    step_dy = y - self_.state.y;
+    step_dpressure = pressure - self_.state.pressure;
+    step_declination = tilt_declination - self_.state.declination;
+    step_ascension = smallest_angular_difference(self_.state.ascension, tilt_ascension);
     step_dtime = dtime_left;
 
     update_states_and_setting_values(self_ as *mut _,
         step_ddab, step_dx, step_dy, step_dpressure,
         step_declination, step_ascension, step_dtime as f32);
 
-    self_.states[MYPAINT_BRUSH_STATE_PARTIAL_DABS as usize] = dabs_moved + dabs_todo;
+    self_.state.partial_dabs = dabs_moved + dabs_todo;
 
     if painted == UNKNOWN {
         painted = if self_.stroke_current_idling_time > 0.0 || self_.stroke_total_painting_time == 0.0 {
