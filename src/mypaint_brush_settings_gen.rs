@@ -5,11 +5,11 @@ macro_rules! fake_enum {
         }
     ) => {
         #[derive(Copy, Clone, Debug, Default)]
-        pub struct $name {
-            $(pub $prop: f32),*
+        pub struct $name<T> {
+            $(pub $prop: T),*
         }
-        impl $name {
-            pub fn int_to_state(&mut self, int: usize) -> &mut f32 {
+        impl<T> $name<T> {
+            pub fn int_to_state(&mut self, int: usize) -> &mut T {
                 match int {
                     $($num => &mut self.$prop),*,
                     _ => unreachable!(),
@@ -35,54 +35,55 @@ pub enum MyPaintBrushInput {
     // MYPAINT_BRUSH_INPUTS_COUNT
 }
 
-#[repr(C)]
-pub enum MyPaintBrushSetting {
-    MYPAINT_BRUSH_SETTING_OPAQUE = 0,
-    MYPAINT_BRUSH_SETTING_OPAQUE_MULTIPLY,
-    MYPAINT_BRUSH_SETTING_OPAQUE_LINEARIZE,
-    MYPAINT_BRUSH_SETTING_RADIUS_LOGARITHMIC,
-    MYPAINT_BRUSH_SETTING_HARDNESS,
-    MYPAINT_BRUSH_SETTING_ANTI_ALIASING,
-    MYPAINT_BRUSH_SETTING_DABS_PER_BASIC_RADIUS,
-    MYPAINT_BRUSH_SETTING_DABS_PER_ACTUAL_RADIUS,
-    MYPAINT_BRUSH_SETTING_DABS_PER_SECOND,
-    MYPAINT_BRUSH_SETTING_RADIUS_BY_RANDOM,
-    MYPAINT_BRUSH_SETTING_SPEED1_SLOWNESS,
-    MYPAINT_BRUSH_SETTING_SPEED2_SLOWNESS,
-    MYPAINT_BRUSH_SETTING_SPEED1_GAMMA,
-    MYPAINT_BRUSH_SETTING_SPEED2_GAMMA,
-    MYPAINT_BRUSH_SETTING_OFFSET_BY_RANDOM,
-    MYPAINT_BRUSH_SETTING_OFFSET_BY_SPEED,
-    MYPAINT_BRUSH_SETTING_OFFSET_BY_SPEED_SLOWNESS,
-    MYPAINT_BRUSH_SETTING_SLOW_TRACKING,
-    MYPAINT_BRUSH_SETTING_SLOW_TRACKING_PER_DAB,
-    MYPAINT_BRUSH_SETTING_TRACKING_NOISE,
-    MYPAINT_BRUSH_SETTING_COLOR_H,
-    MYPAINT_BRUSH_SETTING_COLOR_S,
-    MYPAINT_BRUSH_SETTING_COLOR_V,
-    MYPAINT_BRUSH_SETTING_RESTORE_COLOR,
-    MYPAINT_BRUSH_SETTING_CHANGE_COLOR_H,
-    MYPAINT_BRUSH_SETTING_CHANGE_COLOR_L,
-    MYPAINT_BRUSH_SETTING_CHANGE_COLOR_HSL_S,
-    MYPAINT_BRUSH_SETTING_CHANGE_COLOR_V,
-    MYPAINT_BRUSH_SETTING_CHANGE_COLOR_HSV_S,
-    MYPAINT_BRUSH_SETTING_SMUDGE,
-    MYPAINT_BRUSH_SETTING_SMUDGE_LENGTH,
-    MYPAINT_BRUSH_SETTING_SMUDGE_RADIUS_LOG,
-    MYPAINT_BRUSH_SETTING_ERASER,
-    MYPAINT_BRUSH_SETTING_STROKE_THRESHOLD,
-    MYPAINT_BRUSH_SETTING_STROKE_DURATION_LOGARITHMIC,
-    MYPAINT_BRUSH_SETTING_STROKE_HOLDTIME,
-    MYPAINT_BRUSH_SETTING_CUSTOM_INPUT,
-    MYPAINT_BRUSH_SETTING_CUSTOM_INPUT_SLOWNESS,
-    MYPAINT_BRUSH_SETTING_ELLIPTICAL_DAB_RATIO,
-    MYPAINT_BRUSH_SETTING_ELLIPTICAL_DAB_ANGLE,
-    MYPAINT_BRUSH_SETTING_DIRECTION_FILTER,
-    MYPAINT_BRUSH_SETTING_LOCK_ALPHA,
-    MYPAINT_BRUSH_SETTING_COLORIZE,
-    MYPAINT_BRUSH_SETTING_SNAP_TO_PIXEL,
-    MYPAINT_BRUSH_SETTING_PRESSURE_GAIN_LOG,
-    // MYPAINT_BRUSH_SETTINGS_COUNT
+fake_enum! {
+    pub struct MyPaintBrushSetting {
+        0 => opaque,
+        1 => opaque_multiply,
+        2 => opaque_linearize,
+        3 => radius_logarithmic,
+        4 => hardness,
+        5 => anti_aliasing,
+        6 => dabs_per_basic_radius,
+        7 => dabs_per_actual_radius,
+        8 => dabs_per_second,
+        9 => radius_by_random,
+        10 => speed1_slowness,
+        11 => speed2_slowness,
+        12 => speed1_gamma,
+        13 => speed2_gamma,
+        14 => offset_by_random,
+        15 => offset_by_speed,
+        16 => offset_by_speed_slowness,
+        17 => slow_tracking,
+        18 => slow_tracking_per_dab,
+        19 => tracking_noise,
+        20 => color_h,
+        21 => color_s,
+        22 => color_v,
+        23 => restore_color,
+        24 => change_color_h,
+        25 => change_color_l,
+        26 => change_color_hsl_s,
+        27 => change_color_v,
+        28 => change_color_hsv_s,
+        29 => smudge,
+        30 => smudge_length,
+        31 => smudge_radius_log,
+        32 => eraser,
+        33 => stroke_threshold,
+        34 => stroke_duration_logarithmic,
+        35 => stroke_holdtime,
+        36 => custom_input,
+        37 => custom_input_slowness,
+        38 => elliptical_dab_ratio,
+        39 => elliptical_dab_angle,
+        40 => direction_filter,
+        41 => lock_alpha,
+        42 => colorize,
+        43 => snap_to_pixel,
+        44 => pressure_gain_log,
+        // mypaint_brush_settings_count
+    }
 }
 
 /// direct structification of the previous enum of the same name

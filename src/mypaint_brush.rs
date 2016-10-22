@@ -1,7 +1,7 @@
 // everything is swamped with unused var warnings so this hides it for now
 #![allow(unused_variables)]
 
-use mypaint_brush_settings_gen::MyPaintBrushSetting::*;
+use mypaint_brush_settings_gen::MyPaintBrushSetting;
 use mypaint_brush_settings_gen::MyPaintBrushState;
 use mypaint_brush_settings_gen::MyPaintBrushInput::*;
 use mypaint_brush_settings::MyPaintBrushSettingInfo;
@@ -25,10 +25,10 @@ pub struct MyPaintBrush {
     print_inputs: bool,
     stroke_total_painting_time: f64,
     stroke_current_idling_time: f64,
-    state: MyPaintBrushState,
+    state: MyPaintBrushState<f32>,
     rng: *mut RngDouble,
-    settings: [*mut MypaintMapping; MYPAINT_BRUSH_SETTINGS_COUNT],
-    settings_value: [f32; MYPAINT_BRUSH_SETTINGS_COUNT],
+    settings: MyPaintBrushSetting<MypaintMapping>,
+    settings_value: MyPaintBrushSetting<f32>,
 
     speed_mapping_gamma: (f32, f32),
     speed_mapping_m: (f32, f32),
@@ -40,21 +40,14 @@ pub struct MyPaintBrush {
 
 #[no_mangle]
 pub unsafe extern fn mypaint_brush_new() -> *mut MyPaintBrush {
-    let settings = {
-        let mut data = [ptr::null_mut(); MYPAINT_BRUSH_SETTINGS_COUNT];
-        for elem in data.iter_mut() {
-            *elem = mypaint_mapping_new(MYPAINT_BRUSH_INPUTS_COUNT as i32);
-        }
-        data
-    };
     let brush = Box::into_raw(Box::new(MyPaintBrush {
         print_inputs: false,
         stroke_total_painting_time: 0.0,
         stroke_current_idling_time: 0.0,
         state: MyPaintBrushState::default(),
         rng: rng_double_new(1000),
-        settings: settings,
-        settings_value: [0.0; MYPAINT_BRUSH_SETTINGS_COUNT],
+        settings: MyPaintBrushSetting::default(),
+        settings_value: MyPaintBrushSetting::default(),
         speed_mapping_gamma: (0.0, 0.0),
         speed_mapping_m: (0.0, 0.0),
         speed_mapping_q: (0.0, 0.0),
@@ -72,9 +65,6 @@ unsafe fn brush_free(
 {
     assert!(!self_.is_null());
     let self_ = Box::from_raw(self_);
-    for elem in self_.settings.iter() {
-        mypaint_mapping_free(*elem);
-    }
     rng_double_free(self_.rng);
 }
 
@@ -139,7 +129,7 @@ pub unsafe extern fn mypaint_brush_set_base_value(
 {
     assert!(!self_.is_null());
     assert!(id < MYPAINT_BRUSH_SETTINGS_COUNT as u32);
-    mypaint_mapping_set_base_value((*self_).settings[id as usize], value);
+    (*self_).settings.int_to_state(id as usize).set_base_value(value);
     settings_base_values_have_changed(self_);
 }
 
@@ -151,7 +141,7 @@ pub unsafe extern fn mypaint_brush_get_base_value(
 {
     assert!(!self_.is_null());
     assert!(id < MYPAINT_BRUSH_SETTINGS_COUNT as u32);
-    mypaint_mapping_get_base_value((*self_).settings[id as usize])
+    (*self_).settings.int_to_state(id as usize).get_base_value()
 }
 
 #[no_mangle]
@@ -163,7 +153,7 @@ pub unsafe extern fn mypaint_brush_set_mapping_n(
 {
     assert!(!self_.is_null());
     assert!(id < MYPAINT_BRUSH_SETTINGS_COUNT as u32);
-    mypaint_mapping_set_n((*self_).settings[id as usize], input as i32, n);
+    (*self_).settings.int_to_state(id as usize).set_n(input as usize, n as usize);
 }
 
 #[no_mangle]
@@ -175,7 +165,7 @@ pub unsafe extern fn mypaint_brush_get_mapping_n(
 {
     assert!(!self_.is_null());
     assert!(id < MYPAINT_BRUSH_SETTINGS_COUNT as u32);
-    mypaint_mapping_get_n((*self_).settings[id as usize], input as i32)
+    (*self_).settings.int_to_state(id as usize).get_n(input as usize).unwrap() as i32
 }
 
 #[no_mangle]
@@ -186,7 +176,7 @@ pub unsafe extern fn mypaint_brush_is_constant(
 {
     assert!(!self_.is_null());
     assert!(id < MYPAINT_BRUSH_SETTINGS_COUNT as u32);
-    mypaint_mapping_is_constant((*self_).settings[id as usize])
+    (*self_).settings.int_to_state(id as usize).is_constant()
 }
 
 #[no_mangle]
@@ -197,7 +187,7 @@ pub unsafe extern fn mypaint_brush_get_inputs_used_n(
 {
     assert!(!self_.is_null());
     assert!(id < MYPAINT_BRUSH_SETTINGS_COUNT as u32);
-    mypaint_mapping_get_inputs_used_n((*self_).settings[id as usize])
+    (*self_).settings.int_to_state(id as usize).get_inputs_used() as i32
 }
 
 #[no_mangle]
@@ -211,8 +201,7 @@ pub unsafe extern fn mypaint_brush_set_mapping_point(
 {
     assert!(!self_.is_null());
     assert!(id < MYPAINT_BRUSH_SETTINGS_COUNT as u32);
-    mypaint_mapping_set_point(
-        (*self_).settings[id as usize], input as i32, index, x, y);
+    (*self_).settings.int_to_state(id as usize).set_point(input as usize, index as usize, (x, y));
 }
 
 #[no_mangle]
@@ -226,8 +215,9 @@ pub unsafe extern fn mypaint_brush_get_mapping_point(
 {
     assert!(!self_.is_null());
     assert!(id < MYPAINT_BRUSH_SETTINGS_COUNT as u32);
-    mypaint_mapping_get_point(
-        (*self_).settings[id as usize], input as i32, index, x, y);
+    let p = (*self_).settings.int_to_state(id as usize).get_point(input as usize, index as usize);
+    *x = p.0;
+    *y = p.1;
 }
 
 #[no_mangle]
@@ -290,12 +280,10 @@ pub unsafe extern fn settings_base_values_have_changed(
     let self_ = &mut *self_;
 
     let (gamma0, m0, q0) = precalc_with_gamma(
-        mypaint_mapping_get_base_value(
-            self_.settings[MYPAINT_BRUSH_SETTING_SPEED1_GAMMA as usize]));
+        self_.settings.speed1_gamma.get_base_value());
 
     let (gamma1, m1, q1) = precalc_with_gamma(
-        mypaint_mapping_get_base_value(
-            self_.settings[MYPAINT_BRUSH_SETTING_SPEED2_GAMMA as usize]));
+        self_.settings.speed2_gamma.get_base_value());
 
     self_.speed_mapping_gamma = (gamma0, gamma1);
     self_.speed_mapping_m = (m0, m1);
@@ -329,8 +317,7 @@ pub unsafe extern fn update_states_and_setting_values(
     self_.state.declination += step_declination;
     self_.state.ascension += step_ascension;
 
-    let base_radius = mypaint_mapping_get_base_value(
-        self_.settings[MYPAINT_BRUSH_SETTING_RADIUS_LOGARITHMIC as usize])
+    let base_radius = self_.settings.radius_logarithmic.get_base_value()
         .exp();
 
     if self_.state.pressure <= 0.0 {
@@ -339,8 +326,7 @@ pub unsafe extern fn update_states_and_setting_values(
     let pressure = self_.state.pressure;
 
     {
-        let base_threshold = mypaint_mapping_get_base_value(
-            self_.settings[MYPAINT_BRUSH_SETTING_STROKE_THRESHOLD as usize]);
+        let base_threshold = self_.settings.stroke_threshold.get_base_value();
 
         if self_.state.stroke_started == 0.0 {
             if pressure > base_threshold + 0.0001 {
@@ -360,7 +346,7 @@ pub unsafe extern fn update_states_and_setting_values(
     let norm_dist = norm_speed * step_dtime;
 
     let mut inputs = [
-        pressure * mypaint_mapping_get_base_value(self_.settings[MYPAINT_BRUSH_SETTING_PRESSURE_GAIN_LOG as usize]).exp(),
+        pressure * self_.settings.pressure_gain_log.get_base_value().exp(),
         (self_.speed_mapping_gamma.0 + self_.state.norm_speed1_slow).ln()
             * self_.speed_mapping_m.0 + self_.speed_mapping_q.1,
         (self_.speed_mapping_gamma.1 + self_.state.norm_speed2_slow).ln()
@@ -378,27 +364,28 @@ pub unsafe extern fn update_states_and_setting_values(
     ];
 
     for i in 0..MYPAINT_BRUSH_SETTINGS_COUNT {
-        self_.settings_value[i] = mypaint_mapping_calculate(self_.settings[i], inputs.as_mut_ptr());
+        *self_.settings_value.int_to_state(i) =
+            self_.settings.int_to_state(i).calculate(&inputs);
     }
 
     {
-        let fac = 1.0 - exp_decay(self_.settings_value[MYPAINT_BRUSH_SETTING_SLOW_TRACKING_PER_DAB as usize], step_ddab);
+        let fac = 1.0 - exp_decay(self_.settings_value.slow_tracking_per_dab, step_ddab);
         self_.state.actual_x += (self_.state.x - self_.state.actual_x) * fac;
         self_.state.actual_y += (self_.state.y - self_.state.actual_y) * fac;
     }
 
     {
-        let fac = 1.0 - exp_decay(self_.settings_value[MYPAINT_BRUSH_SETTING_SPEED1_SLOWNESS as usize], step_dtime);
+        let fac = 1.0 - exp_decay(self_.settings_value.speed1_slowness, step_dtime);
         self_.state.norm_speed1_slow +=
             (norm_speed - self_.state.norm_speed1_slow) * fac;
-        let fac = 1.0 - exp_decay(self_.settings_value[MYPAINT_BRUSH_SETTING_SPEED2_SLOWNESS as usize], step_dtime);
+        let fac = 1.0 - exp_decay(self_.settings_value.speed2_slowness, step_dtime);
         self_.state.norm_speed2_slow +=
             (norm_speed - self_.state.norm_speed2_slow) * fac;
     }
 
     {
         let mut time_constant = (
-            self_.settings_value[MYPAINT_BRUSH_SETTING_OFFSET_BY_SPEED_SLOWNESS as usize]*0.01)
+            self_.settings_value.offset_by_speed_slowness*0.01)
             .exp() - 1.0;
         time_constant = time_constant.max(0.002);
         let fac = 1.0 - exp_decay(time_constant, step_dtime);
@@ -413,7 +400,7 @@ pub unsafe extern fn update_states_and_setting_values(
         let mut dy = step_dy / base_radius;
         let step_in_dabtime = (dx*dx + dy*dy).sqrt();
         let fac = 1.0 - exp_decay(
-            (self_.settings_value[MYPAINT_BRUSH_SETTING_DIRECTION_FILTER as usize]*0.5).exp() - 1.0,
+            (self_.settings_value.direction_filter*0.5).exp() - 1.0,
             step_in_dabtime);
 
         let dx_old = self_.state.direction_dx;
@@ -427,20 +414,20 @@ pub unsafe extern fn update_states_and_setting_values(
     }
 
     {
-        let fac = 1.0 - exp_decay(self_.settings_value[MYPAINT_BRUSH_SETTING_CUSTOM_INPUT_SLOWNESS as usize], 0.1);
+        let fac = 1.0 - exp_decay(self_.settings_value.custom_input_slowness, 0.1);
         self_.state.custom_input +=
-            (self_.settings_value[MYPAINT_BRUSH_SETTING_CUSTOM_INPUT as usize]
+            (self_.settings_value.custom_input
              - self_.state.custom_input)
             * fac;
     }
 
     {
-        let frequency = (-self_.settings_value[MYPAINT_BRUSH_SETTING_STROKE_DURATION_LOGARITHMIC as usize]).exp();
+        let frequency = (-self_.settings_value.stroke_duration_logarithmic).exp();
         self_.state.stroke +=
             norm_dist * frequency;
         self_.state.stroke =
             self_.state.stroke.max(0.0);
-        let wrap = 1.0 + self_.settings_value[MYPAINT_BRUSH_SETTING_STROKE_HOLDTIME as usize];
+        let wrap = 1.0 + self_.settings_value.stroke_holdtime;
 
         if self_.state.stroke > wrap {
             self_.state.stroke = if wrap > 10.9 {
@@ -451,14 +438,14 @@ pub unsafe extern fn update_states_and_setting_values(
         }
     }
 
-    let radius_log = self_.settings_value[MYPAINT_BRUSH_SETTING_RADIUS_LOGARITHMIC as usize];
+    let radius_log = self_.settings_value.radius_logarithmic;
     self_.state.actual_radius =
         radius_log.exp().min(ACTUAL_RADIUS_MAX).max(ACTUAL_RADIUS_MIN);
 
     self_.state.actual_elliptical_dab_ratio =
-        self_.settings_value[MYPAINT_BRUSH_SETTING_ELLIPTICAL_DAB_RATIO as usize];
+        self_.settings_value.elliptical_dab_ratio;
     self_.state.actual_elliptical_dab_angle =
-        self_.settings_value[MYPAINT_BRUSH_SETTING_ELLIPTICAL_DAB_ANGLE as usize];
+        self_.settings_value.elliptical_dab_angle;
 }
 
 fn sq(x: f32) -> f32 {
@@ -473,22 +460,21 @@ pub unsafe extern fn prepare_and_draw_dab(
 {
     assert!(!self_.is_null());
     let self_ = &mut *self_;
-    self_.settings_value[MYPAINT_BRUSH_SETTING_OPAQUE as usize] =
-        self_.settings_value[MYPAINT_BRUSH_SETTING_OPAQUE as usize].max(0.0);
+    self_.settings_value.opaque =
+        self_.settings_value.opaque.max(0.0);
 
-    let mut opaque = self_.settings_value[MYPAINT_BRUSH_SETTING_OPAQUE as usize]
-        * self_.settings_value[MYPAINT_BRUSH_SETTING_OPAQUE_MULTIPLY as usize];
+    let mut opaque = self_.settings_value.opaque
+        * self_.settings_value.opaque_multiply;
     opaque = opaque.min(1.0).max(0.0);
 
-    if self_.settings_value[MYPAINT_BRUSH_SETTING_OPAQUE_LINEARIZE as usize] != 0.0 {
+    if self_.settings_value.opaque_linearize != 0.0 {
         let mut dabs_per_pixel = (
-            mypaint_mapping_get_base_value(self_.settings[MYPAINT_BRUSH_SETTING_DABS_PER_ACTUAL_RADIUS as usize])
-            + mypaint_mapping_get_base_value(self_.settings[MYPAINT_BRUSH_SETTING_DABS_PER_BASIC_RADIUS as usize])
+            self_.settings.dabs_per_actual_radius.get_base_value()
+            + self_.settings.dabs_per_basic_radius.get_base_value()
         ) * 2.0;
 
         dabs_per_pixel = dabs_per_pixel.max(1.0);
-        dabs_per_pixel = 1.0 + mypaint_mapping_get_base_value(
-            self_.settings[MYPAINT_BRUSH_SETTING_OPAQUE_LINEARIZE as usize])
+        dabs_per_pixel = 1.0 + self_.settings.opaque_linearize.get_base_value()
             * (dabs_per_pixel - 1.0);
 
         let alpha = opaque;
@@ -500,17 +486,16 @@ pub unsafe extern fn prepare_and_draw_dab(
     let mut x = self_.state.actual_x;
     let mut y = self_.state.actual_y;
 
-    let base_radius = mypaint_mapping_get_base_value(
-        self_.settings[MYPAINT_BRUSH_SETTING_RADIUS_LOGARITHMIC as usize]).exp();
+    let base_radius = self_.settings.radius_logarithmic.get_base_value().exp();
 
-    if self_.settings_value[MYPAINT_BRUSH_SETTING_OFFSET_BY_SPEED as usize] != 0.0 {
-        let mult = self_.settings_value[MYPAINT_BRUSH_SETTING_OFFSET_BY_SPEED as usize] * 0.1 * base_radius;
+    if self_.settings_value.offset_by_speed != 0.0 {
+        let mult = self_.settings_value.offset_by_speed * 0.1 * base_radius;
         x += self_.state.norm_dx_slow * mult;
         y += self_.state.norm_dy_slow * mult;
     }
 
     {
-        let mut amp = self_.settings_value[MYPAINT_BRUSH_SETTING_OFFSET_BY_RANDOM as usize];
+        let mut amp = self_.settings_value.offset_by_random;
         if amp != 0.0 {
             amp = amp.max(0.0);
             x += rand_gauss(self_.rng) * amp * base_radius;
@@ -520,10 +505,10 @@ pub unsafe extern fn prepare_and_draw_dab(
 
     let mut radius = self_.state.actual_radius;
 
-    if self_.settings_value[MYPAINT_BRUSH_SETTING_RADIUS_BY_RANDOM as usize] != 0.0 {
-        let mut radius_log = self_.settings_value[MYPAINT_BRUSH_SETTING_RADIUS_LOGARITHMIC as usize];
+    if self_.settings_value.radius_by_random != 0.0 {
+        let mut radius_log = self_.settings_value.radius_logarithmic;
         radius_log += rand_gauss(self_.rng)
-            * self_.settings_value[MYPAINT_BRUSH_SETTING_RADIUS_BY_RANDOM as usize];
+            * self_.settings_value.radius_by_random;
 
         radius = radius_log.exp().min(ACTUAL_RADIUS_MAX).max(ACTUAL_RADIUS_MIN);
 
@@ -533,11 +518,11 @@ pub unsafe extern fn prepare_and_draw_dab(
         }
     }
 
-    if self_.settings_value[MYPAINT_BRUSH_SETTING_SMUDGE_LENGTH as usize] < 1.0
-        && (self_.settings_value[MYPAINT_BRUSH_SETTING_SMUDGE as usize] != 0.0
-            || !mypaint_mapping_is_constant(self_.settings[MYPAINT_BRUSH_SETTING_SMUDGE as usize]))
+    if self_.settings_value.smudge_length < 1.0
+        && (self_.settings_value.smudge != 0.0
+            || !self_.settings.smudge.is_constant())
     {
-        let mut fac = self_.settings_value[MYPAINT_BRUSH_SETTING_SMUDGE_LENGTH as usize]
+        let mut fac = self_.settings_value.smudge_length
             .max(0.01);
         let px = x.round();
         let py = y.round();
@@ -555,7 +540,7 @@ pub unsafe extern fn prepare_and_draw_dab(
             self_.state.last_getcolor_recentness = 1.0;
 
             let mut smudge_radius =
-                radius * self_.settings_value[MYPAINT_BRUSH_SETTING_SMUDGE_RADIUS_LOG as usize].exp();
+                radius * self_.settings_value.smudge_radius_log.exp();
             smudge_radius = smudge_radius.min(1.0).max(0.0);
             mypaint_surface_get_color(surface, px, py, smudge_radius,
                 &mut r as *mut _,
@@ -584,20 +569,17 @@ pub unsafe extern fn prepare_and_draw_dab(
             fac*self_.state.smudge_ba + (1.0-fac)*b*a;
     }
 
-    let mut color_h = mypaint_mapping_get_base_value(
-        self_.settings[MYPAINT_BRUSH_SETTING_COLOR_H as usize]);
-    let mut color_s = mypaint_mapping_get_base_value(
-        self_.settings[MYPAINT_BRUSH_SETTING_COLOR_S as usize]);
-    let mut color_v = mypaint_mapping_get_base_value(
-        self_.settings[MYPAINT_BRUSH_SETTING_COLOR_V as usize]);
+    let mut color_h = self_.settings.color_h.get_base_value();
+    let mut color_s = self_.settings.color_s.get_base_value();
+    let mut color_v = self_.settings.color_v.get_base_value();
     let mut eraser_target_alpha = 1.0;
 
-    if self_.settings_value[MYPAINT_BRUSH_SETTING_SMUDGE as usize] > 0.0 {
+    if self_.settings_value.smudge > 0.0 {
         hsv_to_rgb_float(
             &mut color_h as *mut _,
             &mut color_s as *mut _,
             &mut color_v as *mut _);
-        let fac = self_.settings_value[MYPAINT_BRUSH_SETTING_SMUDGE as usize]
+        let fac = self_.settings_value.smudge
             .min(1.0);
         eraser_target_alpha = ((1.0-fac) + fac*self_.state.smudge_a)
             .min(1.0).max(0.0);
@@ -616,14 +598,14 @@ pub unsafe extern fn prepare_and_draw_dab(
             &mut color_v as *mut _);
     }
 
-    eraser_target_alpha *= 1.0 - self_.settings_value[MYPAINT_BRUSH_SETTING_ERASER as usize];
+    eraser_target_alpha *= 1.0 - self_.settings_value.eraser;
 
-    color_h += self_.settings_value[MYPAINT_BRUSH_SETTING_CHANGE_COLOR_H as usize];
-    color_s += self_.settings_value[MYPAINT_BRUSH_SETTING_CHANGE_COLOR_HSV_S as usize];
-    color_v += self_.settings_value[MYPAINT_BRUSH_SETTING_CHANGE_COLOR_V as usize];
+    color_h += self_.settings_value.change_color_h;
+    color_s += self_.settings_value.change_color_hsv_s;
+    color_v += self_.settings_value.change_color_v;
 
-    if self_.settings_value[MYPAINT_BRUSH_SETTING_CHANGE_COLOR_L as usize] != 0.0
-        || self_.settings_value[MYPAINT_BRUSH_SETTING_CHANGE_COLOR_HSL_S as usize] != 0.0
+    if self_.settings_value.change_color_l != 0.0
+        || self_.settings_value.change_color_hsl_s != 0.0
     {
         hsv_to_rgb_float(
             &mut color_h as *mut _,
@@ -633,8 +615,8 @@ pub unsafe extern fn prepare_and_draw_dab(
             &mut color_h as *mut _,
             &mut color_s as *mut _,
             &mut color_v as *mut _);
-        color_v += self_.settings_value[MYPAINT_BRUSH_SETTING_CHANGE_COLOR_L as usize];
-        color_s += self_.settings_value[MYPAINT_BRUSH_SETTING_CHANGE_COLOR_HSL_S as usize];
+        color_v += self_.settings_value.change_color_l;
+        color_s += self_.settings_value.change_color_hsl_s;
         hsl_to_rgb_float(
             &mut color_h as *mut _,
             &mut color_s as *mut _,
@@ -645,11 +627,11 @@ pub unsafe extern fn prepare_and_draw_dab(
             &mut color_v as *mut _);
     }
 
-    let mut hardness = self_.settings_value[MYPAINT_BRUSH_SETTING_HARDNESS as usize]
+    let mut hardness = self_.settings_value.hardness
         .min(1.0).max(0.0);
 
     let current_fadeout_in_pixels = radius * (1.0 - hardness);
-    let min_fadeout_in_pixels = self_.settings_value[MYPAINT_BRUSH_SETTING_ANTI_ALIASING as usize];
+    let min_fadeout_in_pixels = self_.settings_value.anti_aliasing;
 
     if current_fadeout_in_pixels < min_fadeout_in_pixels {
         let current_optical_radius = radius - (1.0 - hardness)*radius/2.0;
@@ -659,7 +641,7 @@ pub unsafe extern fn prepare_and_draw_dab(
         radius = min_fadeout_in_pixels / (1.0 - hardness);
     }
 
-    let snap_to_pixel = self_.settings_value[MYPAINT_BRUSH_SETTING_SNAP_TO_PIXEL as usize];
+    let snap_to_pixel = self_.settings_value.snap_to_pixel;
     if snap_to_pixel > 0.0 {
         let snapped_x = x.floor() + 0.5;
         let snapped_y = y.floor() + 0.5;
@@ -687,8 +669,8 @@ pub unsafe extern fn prepare_and_draw_dab(
         eraser_target_alpha,
         self_.state.actual_elliptical_dab_ratio,
         self_.state.actual_elliptical_dab_angle,
-        self_.settings_value[MYPAINT_BRUSH_SETTING_LOCK_ALPHA as usize],
-        self_.settings_value[MYPAINT_BRUSH_SETTING_COLORIZE as usize]) != 0
+        self_.settings_value.lock_alpha,
+        self_.settings_value.colorize) != 0
 }
 
 #[no_mangle]
@@ -706,12 +688,12 @@ pub unsafe extern fn count_dabs_to(
         // just holding a ref to it cause we use it so much here
         let rad = &mut self_.state.actual_radius;
         if *rad == 0.0 {
-            *rad = mypaint_mapping_get_base_value(self_.settings[MYPAINT_BRUSH_SETTING_RADIUS_LOGARITHMIC as usize]).exp();
+            *rad = self_.settings.radius_logarithmic.get_base_value().exp();
         }
         *rad = rad.min(ACTUAL_RADIUS_MAX).max(ACTUAL_RADIUS_MIN);
     }
 
-    let base_radius = mypaint_mapping_get_base_value(self_.settings[MYPAINT_BRUSH_SETTING_RADIUS_LOGARITHMIC as usize])
+    let base_radius = self_.settings.radius_logarithmic.get_base_value()
         .exp().max(ACTUAL_RADIUS_MIN).min(ACTUAL_RADIUS_MAX);
 
     let xx = x - self_.state.x;
@@ -729,11 +711,11 @@ pub unsafe extern fn count_dabs_to(
     };
 
     let res1 = dist / self_.state.actual_radius *
-        mypaint_mapping_get_base_value(self_.settings[MYPAINT_BRUSH_SETTING_DABS_PER_ACTUAL_RADIUS as usize]);
+        self_.settings.dabs_per_actual_radius.get_base_value();
     let res2 = dist / base_radius *
-        mypaint_mapping_get_base_value(self_.settings[MYPAINT_BRUSH_SETTING_DABS_PER_BASIC_RADIUS as usize]);
+        self_.settings.dabs_per_basic_radius.get_base_value();
     let res3 = dt *
-        mypaint_mapping_get_base_value(self_.settings[MYPAINT_BRUSH_SETTING_DABS_PER_SECOND as usize]);
+        self_.settings.dabs_per_second.get_base_value();
     res1 + res2 + res3
 }
 
@@ -788,15 +770,15 @@ pub unsafe extern fn mypaint_brush_stroke_to(
     }
 
     {
-        let tracking_noise = mypaint_mapping_get_base_value(self_.settings[MYPAINT_BRUSH_SETTING_TRACKING_NOISE as usize]);
+        let tracking_noise = self_.settings.tracking_noise.get_base_value();
         if tracking_noise != 0.0 {
-            let base_radius = mypaint_mapping_get_base_value(self_.settings[MYPAINT_BRUSH_SETTING_RADIUS_LOGARITHMIC as usize])
+            let base_radius = self_.settings.radius_logarithmic.get_base_value()
                 .exp();
             x += rand_gauss(self_.rng) * tracking_noise * base_radius;
             y += rand_gauss(self_.rng) * tracking_noise * base_radius;
         }
         let fac = 1.0 - exp_decay(
-            mypaint_mapping_get_base_value(self_.settings[MYPAINT_BRUSH_SETTING_SLOW_TRACKING as usize]),
+            self_.settings.slow_tracking.get_base_value(),
             100.0 * dtime as f32);
         let sx = self_.state.x;
         let sy = self_.state.y;
@@ -932,18 +914,20 @@ extern {
 pub unsafe extern fn mypaint_brush_from_defaults(
     self_: *mut MyPaintBrush)
 {
+    assert!(!self_.is_null());
+    let self_ = &mut *self_;
     for s in 0..MYPAINT_BRUSH_SETTINGS_COUNT as u32 {
         for i in 0..MYPAINT_BRUSH_INPUTS_COUNT as u32 {
-            mypaint_brush_set_mapping_n(self_, s, i, 0);
+            mypaint_brush_set_mapping_n(self_ as *mut _, s, i, 0);
         }
 
         let def = (*mypaint_brush_setting_info(s)).def;
-        mypaint_brush_set_base_value(self_, s, def);
+        mypaint_brush_set_base_value(self_ as *mut _, s, def);
     }
 
-    mypaint_brush_set_mapping_n(self_, MYPAINT_BRUSH_SETTING_OPAQUE_MULTIPLY as u32, MYPAINT_BRUSH_INPUT_PRESSURE as u32, 2);
-    mypaint_brush_set_mapping_point(self_, MYPAINT_BRUSH_SETTING_OPAQUE_MULTIPLY as u32, MYPAINT_BRUSH_INPUT_PRESSURE as u32, 0, 0.0, 0.0);
-    mypaint_brush_set_mapping_point(self_, MYPAINT_BRUSH_SETTING_OPAQUE_MULTIPLY as u32, MYPAINT_BRUSH_INPUT_PRESSURE as u32, 1, 1.0, 1.0);
+    self_.settings.opaque_multiply.set_n(MYPAINT_BRUSH_INPUT_PRESSURE as usize, 2);
+    self_.settings.opaque_multiply.set_point(MYPAINT_BRUSH_INPUT_PRESSURE as usize, 0, (0.0, 0.0));
+    self_.settings.opaque_multiply.set_point(MYPAINT_BRUSH_INPUT_PRESSURE as usize, 1, (1.0, 1.0));
 }
 
 #[cfg(test)]

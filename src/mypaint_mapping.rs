@@ -126,6 +126,12 @@ impl MypaintMapping {
     }
 }
 
+impl Default for MypaintMapping {
+    fn default() -> Self {
+        MypaintMapping::new(9)
+    }
+}
+
 #[no_mangle]
 pub unsafe extern fn mypaint_mapping_new(inputs_: i32) -> *mut MypaintMapping {
     Box::into_raw(Box::new(MypaintMapping::new(inputs_ as usize)))
