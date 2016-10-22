@@ -1,3 +1,24 @@
+macro_rules! fake_enum {
+    (
+        pub struct $name:ident {
+            $($num:expr => $prop:ident),*,
+        }
+    ) => {
+        #[derive(Copy, Clone, Debug, Default)]
+        pub struct $name {
+            $(pub $prop: f32),*
+        }
+        impl $name {
+            pub fn int_to_state(&mut self, int: usize) -> &mut f32 {
+                match int {
+                    $($num => &mut self.$prop),*,
+                    _ => unreachable!(),
+                }
+            }
+        }
+    }
+}
+
 #[repr(C)]
 pub enum MyPaintBrushInput {
     MYPAINT_BRUSH_INPUT_PRESSURE = 0,
@@ -65,74 +86,37 @@ pub enum MyPaintBrushSetting {
 }
 
 /// direct structification of the previous enum of the same name
-#[derive(Copy, Clone, Default)]
-pub struct MyPaintBrushState {
-    pub x: f32,
-    pub y: f32,
-    pub pressure: f32,
-    pub partial_dabs: f32,
-    pub actual_radius: f32,
-    pub smudge_ra: f32,
-    pub smudge_ga: f32,
-    pub smudge_ba: f32,
-    pub smudge_a: f32,
-    pub last_getcolor_r: f32,
-    pub last_getcolor_g: f32,
-    pub last_getcolor_b: f32,
-    pub last_getcolor_a: f32,
-    pub last_getcolor_recentness: f32,
-    pub actual_x: f32,
-    pub actual_y: f32,
-    pub norm_dx_slow: f32,
-    pub norm_dy_slow: f32,
-    pub norm_speed1_slow: f32,
-    pub norm_speed2_slow: f32,
-    pub stroke: f32,
-    pub stroke_started: f32,
-    pub custom_input: f32,
-    pub rng_seed: f32,
-    pub actual_elliptical_dab_ratio: f32,
-    pub actual_elliptical_dab_angle: f32,
-    pub direction_dx: f32,
-    pub direction_dy: f32,
-    pub declination: f32,
-    pub ascension: f32
-}
-
-impl MyPaintBrushState {
-    pub fn int_to_state(&mut self, int: usize) -> &mut f32 {
-        match int {
-            0 => &mut self.x,
-            1 => &mut self.y,
-            2 => &mut self.pressure,
-            3 => &mut self.partial_dabs,
-            4 => &mut self.actual_radius,
-            5 => &mut self.smudge_ra,
-            6 => &mut self.smudge_ga,
-            7 => &mut self.smudge_ba,
-            8 => &mut self.smudge_a,
-            9 => &mut self.last_getcolor_r,
-            10 => &mut self.last_getcolor_g,
-            11 => &mut self.last_getcolor_b,
-            12 => &mut self.last_getcolor_a,
-            13 => &mut self.last_getcolor_recentness,
-            14 => &mut self.actual_x,
-            15 => &mut self.actual_y,
-            16 => &mut self.norm_dx_slow,
-            17 => &mut self.norm_dy_slow,
-            18 => &mut self.norm_speed1_slow,
-            19 => &mut self.norm_speed2_slow,
-            20 => &mut self.stroke,
-            21 => &mut self.stroke_started,
-            22 => &mut self.custom_input,
-            23 => &mut self.rng_seed,
-            24 => &mut self.actual_elliptical_dab_ratio,
-            25 => &mut self.actual_elliptical_dab_angle,
-            26 => &mut self.direction_dx,
-            27 => &mut self.direction_dy,
-            28 => &mut self.declination,
-            29 => &mut self.ascension,
-            _ => panic!(),
-        }
+fake_enum! {
+    pub struct MyPaintBrushState {
+        0 => x,
+        1 => y,
+        2 => pressure,
+        3 => partial_dabs,
+        4 => actual_radius,
+        5 => smudge_ra,
+        6 => smudge_ga,
+        7 => smudge_ba,
+        8 => smudge_a,
+        9 => last_getcolor_r,
+        10 => last_getcolor_g,
+        11 => last_getcolor_b,
+        12 => last_getcolor_a,
+        13 => last_getcolor_recentness,
+        14 => actual_x,
+        15 => actual_y,
+        16 => norm_dx_slow,
+        17 => norm_dy_slow,
+        18 => norm_speed1_slow,
+        19 => norm_speed2_slow,
+        20 => stroke,
+        21 => stroke_started,
+        22 => custom_input,
+        23 => rng_seed,
+        24 => actual_elliptical_dab_ratio,
+        25 => actual_elliptical_dab_angle,
+        26 => direction_dx,
+        27 => direction_dy,
+        28 => declination,
+        29 => ascension,
     }
 }
