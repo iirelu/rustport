@@ -1,13 +1,14 @@
 // everything is swamped with unused var warnings so this hides it for now
 #![allow(unused_variables)]
 
+use rand::{Rng, XorShiftRng, weak_rng};
+use rand::distributions::normal::StandardNormal;
 use mypaint_brush_settings_gen::MyPaintBrushSetting;
 use mypaint_brush_settings_gen::MyPaintBrushState;
 use mypaint_brush_settings_gen::MyPaintBrushInput::*;
 use mypaint_brush_settings::MyPaintBrushSettingInfo;
 use mypaint_mapping::*;
 use mypaint_surface::*;
-use rng_double::*;
 use helpers::*;
 
 // note: in the c code these are enum variants from mypaint_brush_settings_gen
@@ -25,7 +26,7 @@ pub struct MyPaintBrush {
     stroke_total_painting_time: f64,
     stroke_current_idling_time: f64,
     state: MyPaintBrushState<f32>,
-    rng: *mut RngDouble,
+    rng: XorShiftRng,
     settings: MyPaintBrushSetting<MypaintMapping>,
     settings_value: MyPaintBrushSetting<f32>,
 
@@ -44,7 +45,7 @@ pub unsafe extern fn mypaint_brush_new() -> *mut MyPaintBrush {
         stroke_total_painting_time: 0.0,
         stroke_current_idling_time: 0.0,
         state: MyPaintBrushState::default(),
-        rng: rng_double_new(1000),
+        rng: weak_rng(),
         settings: MyPaintBrushSetting::default(),
         settings_value: MyPaintBrushSetting::default(),
         speed_mapping_gamma: (0.0, 0.0),
@@ -64,7 +65,6 @@ unsafe fn brush_free(
 {
     assert!(!self_.is_null());
     let self_ = Box::from_raw(self_);
-    rng_double_free(self_.rng);
 }
 
 #[no_mangle]
@@ -350,7 +350,7 @@ pub unsafe extern fn update_states_and_setting_values(
             * self_.speed_mapping_m.0 + self_.speed_mapping_q.1,
         (self_.speed_mapping_gamma.1 + self_.state.norm_speed2_slow).ln()
             * self_.speed_mapping_m.1 + self_.speed_mapping_q.1,
-        rng_double_next(self_.rng) as f32,
+        self_.rng.next_f32(),
         self_.state.stroke.min(1.0),
         {
             let dx = self_.state.direction_dx;
@@ -497,8 +497,10 @@ pub unsafe extern fn prepare_and_draw_dab(
         let mut amp = self_.settings_value.offset_by_random;
         if amp != 0.0 {
             amp = amp.max(0.0);
-            x += rand_gauss(self_.rng) * amp * base_radius;
-            y += rand_gauss(self_.rng) * amp * base_radius;
+            let StandardNormal(rand_x) = self_.rng.gen();
+            let StandardNormal(rand_y) = self_.rng.gen();
+            x += rand_x as f32 * amp * base_radius;
+            y += rand_y as f32 * amp * base_radius;
         }
     }
 
@@ -506,7 +508,7 @@ pub unsafe extern fn prepare_and_draw_dab(
 
     if self_.settings_value.radius_by_random != 0.0 {
         let mut radius_log = self_.settings_value.radius_logarithmic;
-        radius_log += rand_gauss(self_.rng)
+        radius_log += self_.rng.gen::<StandardNormal>().0 as f32
             * self_.settings_value.radius_by_random;
 
         radius = radius_log.exp().min(ACTUAL_RADIUS_MAX).max(ACTUAL_RADIUS_MIN);
@@ -773,8 +775,10 @@ pub unsafe extern fn mypaint_brush_stroke_to(
         if tracking_noise != 0.0 {
             let base_radius = self_.settings.radius_logarithmic.get_base_value()
                 .exp();
-            x += rand_gauss(self_.rng) * tracking_noise * base_radius;
-            y += rand_gauss(self_.rng) * tracking_noise * base_radius;
+            let StandardNormal(rand_x) = self_.rng.gen();
+            let StandardNormal(rand_y) = self_.rng.gen();
+            x += rand_x as f32 * tracking_noise * base_radius;
+            y += rand_y as f32 * tracking_noise * base_radius;
         }
         let fac = 1.0 - exp_decay(
             self_.settings.slow_tracking.get_base_value(),
