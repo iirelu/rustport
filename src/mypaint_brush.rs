@@ -9,7 +9,6 @@ use mypaint_mapping::*;
 use mypaint_surface::*;
 use rng_double::*;
 use helpers::*;
-use std::ptr;
 
 // note: in the c code these are enum variants from mypaint_brush_settings_gen
 const MYPAINT_BRUSH_INPUTS_COUNT: usize = 9;
@@ -345,7 +344,7 @@ pub unsafe extern fn update_states_and_setting_values(
     let norm_speed = (norm_dx*norm_dx + norm_dy*norm_dy).sqrt();
     let norm_dist = norm_speed * step_dtime;
 
-    let mut inputs = [
+    let inputs = [
         pressure * self_.settings.pressure_gain_log.get_base_value().exp(),
         (self_.speed_mapping_gamma.0 + self_.state.norm_speed1_slow).ln()
             * self_.speed_mapping_m.0 + self_.speed_mapping_q.1,
