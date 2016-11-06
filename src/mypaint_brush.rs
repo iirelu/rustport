@@ -316,12 +316,9 @@ pub unsafe extern fn update_states_and_setting_values(
     self_.state.declination += step_declination;
     self_.state.ascension += step_ascension;
 
-    let base_radius = self_.settings.radius_logarithmic.get_base_value()
-        .exp();
+    let base_radius = self_.settings.radius_logarithmic.get_base_value().exp();
 
-    if self_.state.pressure <= 0.0 {
-        self_.state.pressure = 0.0;
-    }
+    self_.state.pressure = self_.state.pressure.max(0.0);
     let pressure = self_.state.pressure;
 
     {
@@ -341,7 +338,7 @@ pub unsafe extern fn update_states_and_setting_values(
 
     let norm_dx = step_dx / step_dtime / base_radius;
     let norm_dy = step_dy / step_dtime / base_radius;
-    let norm_speed = (norm_dx*norm_dx + norm_dy*norm_dy).sqrt();
+    let norm_speed = norm_dx.hypot(norm_dy);
     let norm_dist = norm_speed * step_dtime;
 
     let inputs = [
@@ -374,12 +371,12 @@ pub unsafe extern fn update_states_and_setting_values(
     }
 
     {
-        let fac = 1.0 - exp_decay(self_.settings_value.speed1_slowness, step_dtime);
+        let fac1 = 1.0 - exp_decay(self_.settings_value.speed1_slowness, step_dtime);
+        let fac2 = 1.0 - exp_decay(self_.settings_value.speed2_slowness, step_dtime);
         self_.state.norm_speed1_slow +=
-            (norm_speed - self_.state.norm_speed1_slow) * fac;
-        let fac = 1.0 - exp_decay(self_.settings_value.speed2_slowness, step_dtime);
+            (norm_speed - self_.state.norm_speed1_slow) * fac1;
         self_.state.norm_speed2_slow +=
-            (norm_speed - self_.state.norm_speed2_slow) * fac;
+            (norm_speed - self_.state.norm_speed2_slow) * fac2;
     }
 
     {
@@ -397,7 +394,7 @@ pub unsafe extern fn update_states_and_setting_values(
     {
         let mut dx = step_dx / base_radius;
         let mut dy = step_dy / base_radius;
-        let step_in_dabtime = (dx*dx + dy*dy).sqrt();
+        let step_in_dabtime = dx.hypot(dy);
         let fac = 1.0 - exp_decay(
             (self_.settings_value.direction_filter*0.5).exp() - 1.0,
             step_in_dabtime);
@@ -422,10 +419,8 @@ pub unsafe extern fn update_states_and_setting_values(
 
     {
         let frequency = (-self_.settings_value.stroke_duration_logarithmic).exp();
-        self_.state.stroke +=
-            norm_dist * frequency;
-        self_.state.stroke =
-            self_.state.stroke.max(0.0);
+        self_.state.stroke += norm_dist * frequency;
+        self_.state.stroke = self_.state.stroke.max(0.0);
         let wrap = 1.0 + self_.settings_value.stroke_holdtime;
 
         if self_.state.stroke > wrap {
@@ -441,10 +436,8 @@ pub unsafe extern fn update_states_and_setting_values(
     self_.state.actual_radius =
         radius_log.exp().min(ACTUAL_RADIUS_MAX).max(ACTUAL_RADIUS_MIN);
 
-    self_.state.actual_elliptical_dab_ratio =
-        self_.settings_value.elliptical_dab_ratio;
-    self_.state.actual_elliptical_dab_angle =
-        self_.settings_value.elliptical_dab_angle;
+    self_.state.actual_elliptical_dab_ratio = self_.settings_value.elliptical_dab_ratio;
+    self_.state.actual_elliptical_dab_angle = self_.settings_value.elliptical_dab_angle;
 }
 
 fn sq(x: f32) -> f32 {
@@ -459,11 +452,9 @@ pub unsafe extern fn prepare_and_draw_dab(
 {
     assert!(!self_.is_null());
     let self_ = &mut *self_;
-    self_.settings_value.opaque =
-        self_.settings_value.opaque.max(0.0);
 
-    let mut opaque = self_.settings_value.opaque
-        * self_.settings_value.opaque_multiply;
+    self_.settings_value.opaque = self_.settings_value.opaque.max(0.0);
+    let mut opaque = self_.settings_value.opaque * self_.settings_value.opaque_multiply;
     opaque = opaque.min(1.0).max(0.0);
 
     if self_.settings_value.opaque_linearize != 0.0 {
@@ -520,11 +511,9 @@ pub unsafe extern fn prepare_and_draw_dab(
     }
 
     if self_.settings_value.smudge_length < 1.0
-        && (self_.settings_value.smudge != 0.0
-            || !self_.settings.smudge.is_constant())
+        && (self_.settings_value.smudge != 0.0 || !self_.settings.smudge.is_constant())
     {
-        let mut fac = self_.settings_value.smudge_length
-            .max(0.01);
+        let mut fac = self_.settings_value.smudge_length.max(0.01);
         let px = x.round();
         let py = y.round();
 
@@ -540,10 +529,10 @@ pub unsafe extern fn prepare_and_draw_dab(
             }
             self_.state.last_getcolor_recentness = 1.0;
 
-            let mut smudge_radius =
-                radius * self_.settings_value.smudge_radius_log.exp();
+            let mut smudge_radius = radius * self_.settings_value.smudge_radius_log.exp();
             smudge_radius = smudge_radius.min(1.0).max(0.0);
-            mypaint_surface_get_color(surface, px, py, smudge_radius,
+            mypaint_surface_get_color(
+                surface, px, py, smudge_radius,
                 &mut r as *mut _,
                 &mut g as *mut _,
                 &mut b as *mut _,
@@ -559,15 +548,10 @@ pub unsafe extern fn prepare_and_draw_dab(
             a = self_.state.last_getcolor_a;
         }
 
-        self_.state.smudge_a =
-            (fac*self_.state.smudge_a + (1.0-fac)*a)
-            .min(1.0).max(0.0);
-        self_.state.smudge_ra =
-            fac*self_.state.smudge_ra + (1.0-fac)*r*a;
-        self_.state.smudge_ga =
-            fac*self_.state.smudge_ga + (1.0-fac)*g*a;
-        self_.state.smudge_ba =
-            fac*self_.state.smudge_ba + (1.0-fac)*b*a;
+        self_.state.smudge_a = (fac*self_.state.smudge_a + (1.0-fac)*a).min(1.0).max(0.0);
+        self_.state.smudge_ra = fac*self_.state.smudge_ra + (1.0-fac)*r*a;
+        self_.state.smudge_ga = fac*self_.state.smudge_ga + (1.0-fac)*g*a;
+        self_.state.smudge_ba = fac*self_.state.smudge_ba + (1.0-fac)*b*a;
     }
 
     let mut color_h = self_.settings.color_h.get_base_value();
@@ -580,10 +564,9 @@ pub unsafe extern fn prepare_and_draw_dab(
             &mut color_h as *mut _,
             &mut color_s as *mut _,
             &mut color_v as *mut _);
-        let fac = self_.settings_value.smudge
-            .min(1.0);
-        eraser_target_alpha = ((1.0-fac) + fac*self_.state.smudge_a)
-            .min(1.0).max(0.0);
+        let fac = self_.settings_value.smudge.min(1.0);
+
+        eraser_target_alpha = ((1.0-fac) + fac*self_.state.smudge_a).min(1.0).max(0.0);
         if eraser_target_alpha > 0.0 {
             color_h = (fac*self_.state.smudge_ra + (1.0-fac)*color_h) / eraser_target_alpha;
             color_s = (fac*self_.state.smudge_ga + (1.0-fac)*color_s) / eraser_target_alpha;
@@ -605,9 +588,7 @@ pub unsafe extern fn prepare_and_draw_dab(
     color_s += self_.settings_value.change_color_hsv_s;
     color_v += self_.settings_value.change_color_v;
 
-    if self_.settings_value.change_color_l != 0.0
-        || self_.settings_value.change_color_hsl_s != 0.0
-    {
+    if self_.settings_value.change_color_l != 0.0 || self_.settings_value.change_color_hsl_s != 0.0 {
         hsv_to_rgb_float(
             &mut color_h as *mut _,
             &mut color_s as *mut _,
@@ -628,8 +609,7 @@ pub unsafe extern fn prepare_and_draw_dab(
             &mut color_v as *mut _);
     }
 
-    let mut hardness = self_.settings_value.hardness
-        .min(1.0).max(0.0);
+    let mut hardness = self_.settings_value.hardness.min(1.0).max(0.0);
 
     let current_fadeout_in_pixels = radius * (1.0 - hardness);
     let min_fadeout_in_pixels = self_.settings_value.anti_aliasing;
@@ -748,9 +728,7 @@ pub unsafe extern fn mypaint_brush_stroke_to(
     }
 
     pressure = pressure.max(0.0);
-    if !x.is_finite() || !y.is_finite()
-        || x.abs() > 1e10 || y.abs() > 1e10
-    {
+    if !x.is_finite() || !y.is_finite() || x.abs() > 1e10 || y.abs() > 1e10 {
         // workaround attempt for https://gna.org/bugs/?14372
         x = 0.0;
         y = 0.0;
@@ -766,23 +744,22 @@ pub unsafe extern fn mypaint_brush_stroke_to(
 
     if dtime > 0.1 && pressure != 0.0 && self_.state.pressure == 0.0 {
         // workaround for tablets that don't report motion without pressure
-        mypaint_brush_stroke_to(self_ as *mut _, surface, x, y, 0.0, 9.0, 0.0, dtime - 0.0001);
+        mypaint_brush_stroke_to(self_ as *mut _, surface, x, y, 0.0, 90.0, 0.0, dtime - 0.0001);
         dtime = 0.0001;
     }
 
     {
         let tracking_noise = self_.settings.tracking_noise.get_base_value();
         if tracking_noise != 0.0 {
-            let base_radius = self_.settings.radius_logarithmic.get_base_value()
-                .exp();
+            let base_radius = self_.settings.radius_logarithmic.get_base_value().exp();
+
             let StandardNormal(rand_x) = self_.rng.gen();
             let StandardNormal(rand_y) = self_.rng.gen();
             x += rand_x as f32 * tracking_noise * base_radius;
             y += rand_y as f32 * tracking_noise * base_radius;
         }
         let fac = 1.0 - exp_decay(
-            self_.settings.slow_tracking.get_base_value(),
-            100.0 * dtime as f32);
+            self_.settings.slow_tracking.get_base_value(), 100.0 * dtime as f32);
         let sx = self_.state.x;
         let sy = self_.state.y;
         x = sx + (x - sx)*fac;
